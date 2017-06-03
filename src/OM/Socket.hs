@@ -12,16 +12,20 @@ module OM.Socket (
   openIngress,
   openEgress,
   resolveAddr,
+  loadBalanced,
+  loadBalancedDiscovery,
 ) where
 
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (throwTo, Chan, newChan, writeChan, forkIO,
   readChan, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent.LoadDistribution (evenlyDistributed,
+  withResource)
 import Control.Concurrent.STM (TVar, newTVar, atomically, readTVar,
-  writeTVar, retry)
+  writeTVar, retry, newTVar, modifyTVar)
 import Control.Exception (SomeException, bracketOnError, throw)
-import Control.Monad (void, join)
+import Control.Monad (void, join, when)
 import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
@@ -32,10 +36,16 @@ import Data.Conduit (Source, awaitForever, yield, runConduit, (.|),
 import Data.Conduit.Network (sourceSocket, sinkSocket)
 import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
 import Data.Map (Map)
+import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
-import Data.Text (Text)
+import Data.Set (Set, (\\))
+import Data.Text (Text, stripPrefix)
+import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Word (Word32)
+import Distribution.Version (VersionRange)
 import GHC.Generics (Generic)
+import Network.Legion.Discovery.Client (unName, unServiceAddr, Name,
+  Discovery)
 import Network.Socket (Socket, socket, SocketType(Stream),
   defaultProtocol, setSocketOption, SocketOption(ReuseAddr), bind,
   listen, accept, SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix,
@@ -45,7 +55,9 @@ import Network.Socket.ByteString.Lazy (sendAll)
 import Text.Megaparsec (parse, char, Parsec, Dec, many, satisfy, oneOf, eof)
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Network.Legion.Discovery.Client as D
 import qualified Text.Megaparsec as M
 
 
@@ -397,6 +409,90 @@ listenSocket addr = liftIO $ do
   bind so addr
   listen so 5
   return so
+
+
+{- | Create a load-balanced client by querying legion-discovery. -}
+loadBalancedDiscovery :: (
+      Binary i,
+      Binary o,
+      MonadLoggerIO m,
+      Show o
+    )
+  => Name
+  -> VersionRange
+  -> Discovery
+  -> IO (i -> m o)
+loadBalancedDiscovery name versions discovery = 
+    loadBalanced (unName name) source
+  where
+    source :: IO (Set SockAddr)
+    source = do
+      addrs <- D.query name versions discovery
+      Set.fromList <$> (
+          mapM resolveAddr
+          . mapMaybe (unScheme . unServiceAddr)
+          . Set.toList
+          $ addrs
+        )
+
+    unScheme :: Text -> Maybe Text
+    unScheme = stripPrefix "tcp://"
+
+
+{- | Create a load-balanced client. -}
+loadBalanced :: (
+      Binary i,
+      Binary o,
+      MonadLoggerIO m,
+      Show o
+    )
+  => Text
+  -> IO (Set SockAddr)
+  -> IO (i -> m o)
+loadBalanced name source = do
+  cacheT <- atomically (newTVar Nothing)
+  connsT <- atomically (newTVar mempty)
+  lastUpdatedT <- atomically . newTVar =<< getCurrentTime
+  let
+    fillCache :: IO (Set SockAddr)
+    fillCache = do
+      vals <- source
+      now <- getCurrentTime
+      atomically $ do
+        writeTVar cacheT (Just vals)
+        conns <- readTVar connsT
+        writeTVar connsT (foldr Map.delete conns (Map.keysSet conns \\ vals))
+        writeTVar lastUpdatedT now
+        return vals
+    clearCache :: IO ()
+    clearCache = atomically (writeTVar cacheT Nothing)
+
+  lb <- evenlyDistributed (
+      atomically (readTVar cacheT) >>= \case
+        Nothing -> fillCache
+        Just vals -> return vals
+    )
+  return $ \req -> do
+    now <- liftIO getCurrentTime
+    lastUpdated <- liftIO $ atomically (readTVar lastUpdatedT)
+    when (diffUTCTime now lastUpdated > 10) . liftIO $
+      atomically (writeTVar cacheT Nothing)
+    logging <- askLoggerIO
+    liftIO . withResource lb $ (`runLoggingT` logging) . \case
+      Nothing -> fail $ "No backing instances of: " ++ T.unpack name
+      Just sa -> do
+        conn <- Map.lookup sa <$> liftIO (atomically (readTVar connsT)) >>= \case
+          Nothing -> do
+            conn <- connectServer sa
+            liftIO $ atomically (modifyTVar connsT (Map.insert sa conn))
+            return conn
+          Just conn -> return conn
+        try (conn req) >>= \case
+          Left err -> do
+            liftIO $ atomically (modifyTVar connsT (Map.delete sa))
+            liftIO clearCache
+            throwM (err :: SomeException)
+          Right res -> return res
 
 
 {- | Like `show`, but for 'Text'. -}
