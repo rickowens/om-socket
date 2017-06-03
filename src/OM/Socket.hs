@@ -25,12 +25,14 @@ import Control.Monad (void, join)
 import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
-  runLoggingT, logError)
+  runLoggingT, logError, logDebug, logInfo)
 import Data.Binary (Binary, encode)
-import Data.Conduit (Source, awaitForever, yield, runConduit, (.|), Sink)
+import Data.Conduit (Source, awaitForever, yield, runConduit, (.|),
+  Sink, transPipe)
 import Data.Conduit.Network (sourceSocket, sinkSocket)
 import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
 import Data.Map (Map)
+import Data.Monoid ((<>))
 import Data.Text (Text)
 import Data.Word (Word32)
 import GHC.Generics (Generic)
@@ -55,14 +57,17 @@ openServer :: (
       Binary i,
       Binary o,
       MonadIO m,
-      Show i
+      MonadLoggerIO m,
+      Show i,
+      Show o
     )
   => SockAddr
   -> Source m (i, o -> m ())
 openServer addr = do
     so <- listenSocket addr
     requestChan <- liftIO newChan
-    void . liftIO . forkIO $ acceptLoop so requestChan
+    logging <- askLoggerIO
+    void . liftIO . forkIO . (`runLoggingT` logging) $ acceptLoop so requestChan
     chanToSource requestChan
   where
     acceptLoop :: (
@@ -70,43 +75,65 @@ openServer addr = do
           Binary o,
           MonadIO m,
           MonadIO n,
-          Show i
+          MonadLoggerIO n,
+          Show i,
+          Show o
         )
       => Socket
       -> Chan (i, o -> m ())
       -> n ()
     acceptLoop so requestChan = do
-      (conn, _) <- liftIO (accept so)
+      (conn, ra) <- liftIO (accept so)
+      $(logDebug) . T.pack $ "New connection: " ++  show ra
       responseChan <- liftIO newChan
+      logging <- askLoggerIO
       rtid <-
         liftIO
         . forkIO
+        . (`runLoggingT` logging)
         $ responderThread responseChan conn
-      void . liftIO . forkIO $ do
+      void . liftIO . forkIO . (`runLoggingT` logging) $ do
         result <- try $ runConduit (
-            sourceSocket conn
+            transPipe liftIO (sourceSocket conn)
             .| conduitDecode
-            .| awaitForever (\Request {messageId, payload} ->
+            .| awaitForever (\req@Request {messageId, payload} -> do
+                $(logDebug) . T.pack $ "Got request: " ++ show req
+                start <- liftIO getCurrentTime
                 yield (
                     payload,
-                    liftIO . writeChan responseChan . Response messageId
+                    \res -> do
+                      liftIO . writeChan responseChan . Response messageId $ res
+                      end <- liftIO getCurrentTime
+                      liftIO . (`runLoggingT` logging) . $(logInfo)
+                        $ "Responded to " <> showt messageId <> " in ("
+                        <> showt (diffUTCTime end start) <> ")"
                   )
               )
             .| CL.mapM_ (liftIO . writeChan requestChan)
           )
         case result of
-          Left err -> throwTo rtid (err :: SomeException)
+          Left err -> liftIO $ throwTo rtid (err :: SomeException)
           Right () -> return ()
+        $(logDebug) . T.pack $ "Closed connection: " ++  show ra
       acceptLoop so requestChan
 
     responderThread :: (
-          Binary p
+          Binary p,
+          MonadLoggerIO m,
+          MonadThrow m,
+          Show p
         )
       => Chan (Response p)
       -> Socket
-      -> IO ()
+      -> m ()
     responderThread chan conn = runConduit (
         chanToSource chan
+        .| awaitForever (\res@Response {responseTo, response} -> do
+            $(logDebug) . T.pack
+              $ "Responding to " ++ show responseTo
+              ++ " with: " ++ show response
+            yield res
+          )
         .| conduitEncode
         .| sinkSocket conn
       )
@@ -260,7 +287,7 @@ connectServer addr = do
         readTVar state >>= \s@ClientState {csResponders, csMessageQueue} -> do
           writeTVar state s {csAlive = False}
           return . liftIO . sequence_ $ [
-              r (throw (userError "Compute connection died."))
+              r (throw (userError "Remote connection died."))
               | r <-
                   fmap snd (Map.toList csResponders)
                   ++ fmap snd csMessageQueue
@@ -370,4 +397,10 @@ listenSocket addr = liftIO $ do
   bind so addr
   listen so 5
   return so
+
+
+{- | Like `show`, but for 'Text'. -}
+showt :: (Show a) => a -> Text
+showt a = T.pack (show a)
+
 
