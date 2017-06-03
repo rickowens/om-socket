@@ -78,7 +78,10 @@ openServer addr = do
     acceptLoop so requestChan = do
       (conn, _) <- liftIO (accept so)
       responseChan <- liftIO newChan
-      rtid <- liftIO $ forkIO $ responderThread responseChan conn
+      rtid <-
+        liftIO
+        . forkIO
+        $ responderThread responseChan conn
       void . liftIO . forkIO $ do
         result <- try $ runConduit (
             sourceSocket conn
@@ -96,7 +99,9 @@ openServer addr = do
           Right () -> return ()
       acceptLoop so requestChan
 
-    responderThread :: (Binary p)
+    responderThread :: (
+          Binary p
+        )
       => Chan (Response p)
       -> Socket
       -> IO ()
