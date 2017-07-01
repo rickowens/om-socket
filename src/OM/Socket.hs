@@ -16,6 +16,7 @@ module OM.Socket (
   loadBalancedDiscovery,
   Endpoint(..),
   TlsConfig(..),
+  setWarpEndpoint,
 ) where
 
 
@@ -42,6 +43,7 @@ import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
 import Data.Set (Set, (\\))
+import Data.String (fromString)
 import Data.Text (Text, stripPrefix)
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Word (Word32)
@@ -55,12 +57,14 @@ import Network.Socket (Socket, socket, SocketType(Stream),
   SockAddrCan), Family(AF_INET, AF_INET6, AF_UNIX, AF_CAN), close,
   connect, getAddrInfo, addrAddress, HostName, ServiceName)
 import Network.Socket.ByteString.Lazy (sendAll)
+import Safe (readMay)
 import Text.Megaparsec (parse, char, Parsec, Dec, many, satisfy, oneOf, eof)
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Network.Legion.Discovery.Client as D
+import qualified Network.Wai.Handler.Warp as Warp
 import qualified Text.Megaparsec as M
 
 
@@ -359,15 +363,21 @@ chanToSource chan = do
   chanToSource chan
 
 
-{- | Parse host:port address. -}
+{- | Resolve a host:port address into a 'SockAddr'. -}
 resolveAddr :: (MonadIO m) => Text -> m SockAddr
-resolveAddr str = 
-  case parse parser "$" str of
-    Left err -> fail (show err)
-    Right (host, port) ->
-      liftIO (getAddrInfo Nothing (Just host) (Just port)) >>= \case
-        [] -> fail "Address not found: (host, port)"
-        sa:_ -> return (addrAddress sa)
+resolveAddr str = do
+  (host, port) <- parseAddr str
+  liftIO (getAddrInfo Nothing (Just host) (Just port)) >>= \case
+    [] -> fail "Address not found: (host, port)"
+    sa:_ -> return (addrAddress sa)
+
+
+{- | Parse a host:port address. -}
+parseAddr :: (Monad m) => Text -> m (HostName, ServiceName)
+parseAddr str =
+    case parse parser "$" str of
+      Left err -> fail (show err)
+      Right (host, port) -> return (host, port)
   where
     parser :: Parsec Dec Text (HostName, ServiceName)
     parser = do
@@ -519,5 +529,22 @@ data TlsConfig = TlsConfig {
   }
   deriving (Generic, Show)
 instance FromJSON TlsConfig
+
+
+{- |
+  Sets the port and bind address in the warp settings to run on the indicated
+  endpoint.
+-}
+setWarpEndpoint :: Endpoint -> Warp.Settings  -> Warp.Settings
+setWarpEndpoint Endpoint {bindAddr, tls = Nothing} =
+  case parseAddr bindAddr of
+    Nothing -> error $ "Invalid address: " ++ show bindAddr
+    Just (host, serviceAddress) ->
+      case readMay serviceAddress of
+        Nothing -> error $ "Invalid port: " ++ show serviceAddress
+        Just port ->
+          Warp.setHost (fromString host) . Warp.setPort port
+
+setWarpEndpoint Endpoint {tls = Just _} = error "TLS not yet supported."
 
 
