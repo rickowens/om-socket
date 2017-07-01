@@ -80,10 +80,11 @@ openServer :: (
       Show i,
       Show o
     )
-  => SockAddr
+  => Endpoint
   -> Source m (i, o -> m ())
-openServer addr = do
-    so <- listenSocket addr
+openServer Endpoint {tls = Just _} = fail "openServer: tls not yet supported."
+openServer Endpoint {bindAddr} = do
+    so <- listenSocket =<< resolveAddr bindAddr
     requestChan <- liftIO newChan
     logging <- askLoggerIO
     void . liftIO . forkIO . (`runLoggingT` logging) $ acceptLoop so requestChan
