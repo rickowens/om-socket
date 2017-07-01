@@ -14,6 +14,8 @@ module OM.Socket (
   resolveAddr,
   loadBalanced,
   loadBalancedDiscovery,
+  Endpoint(..),
+  TlsConfig(..),
 ) where
 
 
@@ -30,6 +32,7 @@ import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
   runLoggingT, logError, logDebug, logInfo)
+import Data.Aeson (FromJSON)
 import Data.Binary (Binary, encode)
 import Data.Conduit (Source, awaitForever, yield, runConduit, (.|),
   Sink, transPipe)
@@ -498,5 +501,23 @@ loadBalanced name source = do
 {- | Like `show`, but for 'Text'. -}
 showt :: (Show a) => a -> Text
 showt a = T.pack (show a)
+
+
+{- | A server endpoint configuration. -}
+data Endpoint = Endpoint {
+    bindAddr :: Text,
+         tls :: Maybe TlsConfig
+  }
+  deriving (Generic, Show)
+instance FromJSON Endpoint
+
+
+{- | Tls configuration. -}
+data TlsConfig = TlsConfig {
+    cert :: FilePath,
+     key :: FilePath
+  }
+  deriving (Generic, Show)
+instance FromJSON TlsConfig
 
 
