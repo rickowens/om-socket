@@ -30,7 +30,7 @@ library
     conduit-extra           >= 1.1.15   && < 1.2,
     containers              >= 0.5.7.1  && < 0.6,
     exceptions              >= 0.8.3    && < 0.9,
-    legion-discovery-client >= 0.1.1.1  && < 0.2,
+    legion-discovery-client >= 0.1.1.1  && < 0.3,
     load-balancing          >= 1.0.1.0  && < 1.1,
     megaparsec              >= 5.2.0    && < 5.3,
     monad-logger            >= 0.3.22   && < 0.4,
