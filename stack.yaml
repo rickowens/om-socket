@@ -3,6 +3,6 @@ extra-package-dbs: []
 packages:
 - '.'
 extra-deps:
-- legion-discovery-client-0.2.0.0
+- legion-discovery-client-0.2.0.1
 - load-balancing-1.0.1.0
-resolver: lts-8.9
+resolver: lts-9.0
