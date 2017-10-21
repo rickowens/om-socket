@@ -167,10 +167,11 @@ openIngress :: (
       Binary i,
       MonadIO m
     )
-  => SockAddr
+  => Endpoint
   -> Source m i
-openIngress addr = do
-    so <- listenSocket addr
+openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
+openIngress Endpoint {bindAddr} = do
+    so <- listenSocket =<< resolveAddr bindAddr
     inChan <- liftIO newChan
     void . liftIO . forkIO $ acceptLoop so inChan
     chanToSource inChan
