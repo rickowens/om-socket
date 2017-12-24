@@ -7,6 +7,7 @@
 
 {- | Socket utilities. -}
 module OM.Socket (
+  AddressDescription(..),
   openServer,
   connectServer,
   openIngress,
@@ -43,7 +44,7 @@ import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
 import Data.Set (Set, (\\))
-import Data.String (fromString)
+import Data.String (fromString, IsString)
 import Data.Text (Text, stripPrefix)
 import Data.Time (getCurrentTime, diffUTCTime)
 import Data.Word (Word32)
@@ -58,7 +59,8 @@ import Network.Socket (Socket, socket, SocketType(Stream),
   connect, getAddrInfo, addrAddress, HostName, ServiceName)
 import Network.Socket.ByteString.Lazy (sendAll)
 import Safe (readMay)
-import Text.Megaparsec (parse, char, Parsec, Dec, many, satisfy, oneOf, eof)
+import Text.Megaparsec (parse, char, Parsec, Dec, many, satisfy,
+  oneOf, eof)
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -201,10 +203,10 @@ openEgress :: (
       MonadIO m,
       MonadThrow m
     )
-  => SockAddr
+  => AddressDescription
   -> Sink o m ()
 openEgress addr = do
-  so <- connectSocket addr
+  so <- connectSocket =<< resolveAddr addr
   conduitEncode .| sinkSocket so
 
 
@@ -216,12 +218,12 @@ connectServer :: (
       MonadLoggerIO n,
       Show o
     )
-  => SockAddr
+  => AddressDescription
   -> n (i -> m o)
 connectServer addr = do
     logging <- askLoggerIO
     liftIO $ do
-      so <- connectSocket addr
+      so <- connectSocket =<< resolveAddr addr
       state <- atomically (newTVar ClientState {
           csAlive = True,
           csConn = so,
@@ -366,18 +368,18 @@ chanToSource chan = do
 
 
 {- | Resolve a host:port address into a 'SockAddr'. -}
-resolveAddr :: (MonadIO m) => Text -> m SockAddr
-resolveAddr str = do
-  (host, port) <- parseAddr str
+resolveAddr :: (MonadIO m) => AddressDescription -> m SockAddr
+resolveAddr addr = do
+  (host, port) <- parseAddr addr
   liftIO (getAddrInfo Nothing (Just host) (Just port)) >>= \case
     [] -> fail "Address not found: (host, port)"
     sa:_ -> return (addrAddress sa)
 
 
 {- | Parse a host:port address. -}
-parseAddr :: (Monad m) => Text -> m (HostName, ServiceName)
-parseAddr str =
-    case parse parser "$" str of
+parseAddr :: (Monad m) => AddressDescription -> m (HostName, ServiceName)
+parseAddr addr =
+    case parse parser "$" (unAddressDescription addr) of
       Left err -> fail (show err)
       Right (host, port) -> return (host, port)
   where
@@ -440,15 +442,15 @@ loadBalancedDiscovery :: (
 loadBalancedDiscovery name versions discovery = 
     loadBalanced (unName name) source
   where
-    source :: IO (Set SockAddr)
+    source :: IO (Set AddressDescription)
     source = do
       addrs <- D.query name versions discovery
-      Set.fromList <$> (
-          mapM resolveAddr
-          . mapMaybe (unScheme . unServiceAddr)
-          . Set.toList
-          $ addrs
-        )
+      return
+        . Set.fromList
+        . fmap AddressDescription
+        . mapMaybe (unScheme . unServiceAddr)
+        . Set.toList
+        $ addrs
 
     unScheme :: Text -> Maybe Text
     unScheme = stripPrefix "tcp://"
@@ -462,14 +464,14 @@ loadBalanced :: (
       Show o
     )
   => Text
-  -> IO (Set SockAddr)
+  -> IO (Set AddressDescription)
   -> IO (i -> m o)
 loadBalanced name source = do
   cacheT <- atomically (newTVar Nothing)
   connsT <- atomically (newTVar mempty)
   lastUpdatedT <- atomically . newTVar =<< getCurrentTime
   let
-    fillCache :: IO (Set SockAddr)
+    fillCache :: IO (Set AddressDescription)
     fillCache = do
       vals <- source
       now <- getCurrentTime
@@ -517,10 +519,10 @@ showt a = T.pack (show a)
 
 {- | A server endpoint configuration. -}
 data Endpoint = Endpoint {
-    bindAddr :: Text,
+    bindAddr :: AddressDescription,
          tls :: Maybe TlsConfig
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 instance FromJSON Endpoint
 
 
@@ -529,7 +531,7 @@ data TlsConfig = TlsConfig {
     cert :: FilePath,
      key :: FilePath
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq, Ord)
 instance FromJSON TlsConfig
 
 
@@ -548,5 +550,22 @@ setWarpEndpoint Endpoint {bindAddr, tls = Nothing} =
           Warp.setHost (fromString host) . Warp.setPort port
 
 setWarpEndpoint Endpoint {tls = Just _} = error "TLS not yet supported."
+
+
+{- |
+  A description of a socket address used to represent the address on
+  which a socket is or should be listening. Used instead of a strict
+  `SockAddr`. This adds a level of abstraction on top of raw `SockAddr`s,
+  because some environments (such as docker) may introduce a level of
+  network proxying or vitalization. Use a description instead of the raw
+  address gives an opportunity for name resolution which can surmount
+  the network-level translations.
+-}
+newtype AddressDescription = AddressDescription {
+    unAddressDescription :: Text
+  }
+  deriving (IsString, Binary, Eq, Ord, FromJSON)
+instance Show AddressDescription where
+  show = T.unpack . unAddressDescription
 
 
