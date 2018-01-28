@@ -47,6 +47,7 @@ import Data.Set (Set, (\\))
 import Data.String (fromString, IsString)
 import Data.Text (Text, stripPrefix)
 import Data.Time (getCurrentTime, diffUTCTime)
+import Data.Void (Void)
 import Data.Word (Word32)
 import Distribution.Version (VersionRange)
 import GHC.Generics (Generic)
@@ -59,8 +60,8 @@ import Network.Socket (Socket, socket, SocketType(Stream),
   connect, getAddrInfo, addrAddress, HostName, ServiceName)
 import Network.Socket.ByteString.Lazy (sendAll)
 import Safe (readMay)
-import Text.Megaparsec (parse, char, Parsec, Dec, many, satisfy,
-  oneOf, eof)
+import Text.Megaparsec (parse, Parsec, many, eof)
+import Text.Megaparsec.Char (char, satisfy, oneOf)
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -383,7 +384,7 @@ parseAddr addr =
       Left err -> fail (show err)
       Right (host, port) -> return (host, port)
   where
-    parser :: Parsec Dec Text (HostName, ServiceName)
+    parser :: Parsec Void Text (HostName, ServiceName)
     parser = do
       host <- M.try ipv6 <|> ipv4
       void $ char ':'
@@ -391,14 +392,14 @@ parseAddr addr =
       eof
       return (host, port)
 
-    ipv6 :: Parsec Dec Text HostName
+    ipv6 :: Parsec Void Text HostName
     ipv6 = do
       void $ char '['
       host <- many (satisfy (/= ']'))
       void $ char ']'
       return host
 
-    ipv4 :: Parsec Dec Text HostName
+    ipv4 :: Parsec Void Text HostName
     ipv4 = many (satisfy (/= ':'))
 
 
