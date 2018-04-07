@@ -23,7 +23,7 @@ module OM.Socket (
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (throwTo, Chan, newChan, writeChan, forkIO,
-  readChan, newEmptyMVar, putMVar, takeMVar)
+  readChan, newEmptyMVar, putMVar, takeMVar, MVar)
 import Control.Concurrent.LoadDistribution (evenlyDistributed,
   withResource)
 import Control.Concurrent.STM (TVar, newTVar, atomically, readTVar,
@@ -172,18 +172,23 @@ openIngress :: (Binary i, MonadIO m)
 openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
 openIngress Endpoint {bindAddr} = do
     so <- listenSocket =<< resolveAddr bindAddr
-    inChan <- liftIO newChan
-    void . liftIO . forkIO $ acceptLoop so inChan
-    chanToSource inChan
+    mvar <- liftIO newEmptyMVar
+    void . liftIO . forkIO $ acceptLoop so mvar
+    mvarToSource mvar
   where
-    acceptLoop :: (Binary i, MonadIO m) => Socket -> Chan i -> m ()
-    acceptLoop so requestChan = do
+    mvarToSource :: (MonadIO m) => MVar a -> Source m a
+    mvarToSource mvar = do
+      liftIO (takeMVar mvar) >>= yield
+      mvarToSource mvar
+
+    acceptLoop :: (Binary i, MonadIO m) => Socket -> MVar i -> m ()
+    acceptLoop so mvar = do
       (conn, _) <- liftIO (accept so)
       void . liftIO . forkIO . runConduit $
         sourceSocket conn
         .| conduitDecode
-        .| CL.mapM_ (liftIO . writeChan requestChan)
-      acceptLoop so requestChan
+        .| CL.mapM_ (liftIO . putMVar mvar)
+      acceptLoop so mvar
 
 
 {- |
