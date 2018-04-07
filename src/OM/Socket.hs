@@ -166,10 +166,7 @@ openServer Endpoint {bindAddr} = do
   Opens an "ingress" socket, which is a socket that accepts a stream of
   messages without responding.
 -}
-openIngress :: (
-      Binary i,
-      MonadIO m
-    )
+openIngress :: (Binary i, MonadIO m)
   => Endpoint
   -> Source m i
 openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
@@ -179,13 +176,7 @@ openIngress Endpoint {bindAddr} = do
     void . liftIO . forkIO $ acceptLoop so inChan
     chanToSource inChan
   where
-    acceptLoop :: (
-          Binary i,
-          MonadIO m
-        )
-      => Socket
-      -> Chan i
-      -> m ()
+    acceptLoop :: (Binary i, MonadIO m) => Socket -> Chan i -> m ()
     acceptLoop so requestChan = do
       (conn, _) <- liftIO (accept so)
       void . liftIO . forkIO . runConduit $
