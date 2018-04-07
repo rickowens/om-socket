@@ -35,7 +35,9 @@ import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
   runLoggingT, logError, logDebug, logInfo)
 import Data.Aeson (FromJSON)
-import Data.Binary (Binary, encode)
+import Data.Binary (Binary, encode, get)
+import Data.Binary.Get (Decoder(Fail, Partial, Done), runGetIncremental,
+  pushChunk)
 import Data.Conduit (Source, awaitForever, yield, runConduit, (.|),
   Sink, transPipe)
 import Data.Conduit.Network (sourceSocket, sinkSocket)
@@ -58,10 +60,12 @@ import Network.Socket (Socket, socket, SocketType(Stream),
   listen, accept, SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix,
   SockAddrCan), Family(AF_INET, AF_INET6, AF_UNIX, AF_CAN), close,
   connect, getAddrInfo, addrAddress, HostName, ServiceName)
+import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
 import Safe (readMay)
 import Text.Megaparsec (parse, Parsec, many, eof)
 import Text.Megaparsec.Char (char, satisfy, oneOf)
+import qualified Data.ByteString as BS
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -181,14 +185,25 @@ openIngress Endpoint {bindAddr} = do
       liftIO (takeMVar mvar) >>= yield
       mvarToSource mvar
 
-    acceptLoop :: (Binary i, MonadIO m) => Socket -> MVar i -> m ()
+    acceptLoop :: (Binary i) => Socket -> MVar i -> IO ()
     acceptLoop so mvar = do
-      (conn, _) <- liftIO (accept so)
-      void . liftIO . forkIO . runConduit $
-        sourceSocket conn
-        .| conduitDecode
-        .| CL.mapM_ (liftIO . putMVar mvar)
+      (conn, _) <- accept so
+      void . forkIO $ feed (runGetIncremental get) conn mvar
       acceptLoop so mvar
+
+    feed :: (Binary i) => Decoder i -> Socket -> MVar i -> IO ()
+
+    feed (Done leftover _ i) conn mvar = do
+      putMVar mvar i
+      feed (runGetIncremental get `pushChunk` leftover) conn mvar
+
+    feed (Partial k) conn mvar = do
+      bytes <- recv conn 4096
+      when (BS.null bytes) (fail "Socket closed by peer.")
+      feed (k (Just bytes)) conn mvar
+
+    feed (Fail _ _ err) _conn _chan =
+      fail $ "Socket crashed. Decoding error: " ++ show err
 
 
 {- |
