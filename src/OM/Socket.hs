@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-deprecations #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
@@ -38,8 +39,8 @@ import Data.Aeson (FromJSON)
 import Data.Binary (Binary, encode, get)
 import Data.Binary.Get (Decoder(Fail, Partial, Done), runGetIncremental,
   pushChunk)
-import Data.Conduit (Source, awaitForever, yield, runConduit, (.|),
-  Sink, transPipe)
+import Data.Conduit (awaitForever, yield, runConduit, (.|), transPipe,
+  ConduitT)
 import Data.Conduit.Network (sourceSocket, sinkSocket)
 import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
 import Data.Map (Map)
@@ -88,7 +89,7 @@ openServer :: (
       Show o
     )
   => Endpoint
-  -> Source m (i, o -> m ())
+  -> ConduitT () (i, o -> m ()) m ()
 openServer Endpoint {tls = Just _} = fail "openServer: tls not yet supported."
 openServer Endpoint {bindAddr} = do
     so <- listenSocket =<< resolveAddr bindAddr
@@ -172,7 +173,7 @@ openServer Endpoint {bindAddr} = do
 -}
 openIngress :: (Binary i, MonadIO m)
   => Endpoint
-  -> Source m i
+  -> ConduitT () i m ()
 openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
 openIngress Endpoint {bindAddr} = do
     so <- listenSocket =<< resolveAddr bindAddr
@@ -180,7 +181,7 @@ openIngress Endpoint {bindAddr} = do
     void . liftIO . forkIO $ acceptLoop so mvar
     mvarToSource mvar
   where
-    mvarToSource :: (MonadIO m) => MVar a -> Source m a
+    mvarToSource :: (MonadIO m) => MVar a -> ConduitT () a m ()
     mvarToSource mvar = do
       liftIO (takeMVar mvar) >>= yield
       mvarToSource mvar
@@ -216,7 +217,7 @@ openEgress :: (
       MonadThrow m
     )
   => AddressDescription
-  -> Sink o m ()
+  -> ConduitT o Void m ()
 openEgress addr = do
   so <- connectSocket =<< resolveAddr addr
   conduitEncode .| sinkSocket so
@@ -373,7 +374,7 @@ fam SockAddrCan {} = AF_CAN
 
 
 {- | Construct a coundiut source by reading forever from a 'Chan'. -}
-chanToSource :: (MonadIO m) => Chan a -> Source m a
+chanToSource :: (MonadIO m) => Chan a -> ConduitT () a m ()
 chanToSource chan = do
   yield =<< liftIO (readChan chan)
   chanToSource chan
