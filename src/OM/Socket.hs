@@ -1,10 +1,10 @@
-{-# OPTIONS_GHC -Wno-deprecations #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 {- | Socket utilities. -}
 module OM.Socket (
