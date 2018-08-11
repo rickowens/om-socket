@@ -28,7 +28,7 @@ import Control.Concurrent (throwTo, Chan, newChan, writeChan, forkIO,
 import Control.Concurrent.LoadDistribution (evenlyDistributed,
   withResource)
 import Control.Concurrent.STM (TVar, newTVar, atomically, readTVar,
-  writeTVar, retry, newTVar, modifyTVar)
+  writeTVar, retry, newTVar, modifyTVar, readTVarIO)
 import Control.Exception (SomeException, bracketOnError, throw)
 import Control.Monad (void, join, when)
 import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
@@ -498,20 +498,20 @@ loadBalanced name source = do
     clearCache = atomically (writeTVar cacheT Nothing)
 
   lb <- evenlyDistributed (
-      atomically (readTVar cacheT) >>= \case
+      readTVarIO cacheT >>= \case
         Nothing -> fillCache
         Just vals -> return vals
     )
   return $ \req -> do
     now <- liftIO getCurrentTime
-    lastUpdated <- liftIO $ atomically (readTVar lastUpdatedT)
+    lastUpdated <- liftIO $ readTVarIO lastUpdatedT
     when (diffUTCTime now lastUpdated > 10) . liftIO $
       atomically (writeTVar cacheT Nothing)
     logging <- askLoggerIO
     liftIO . withResource lb $ (`runLoggingT` logging) . \case
       Nothing -> fail $ "No backing instances of: " ++ T.unpack name
       Just sa -> do
-        conn <- Map.lookup sa <$> liftIO (atomically (readTVar connsT)) >>= \case
+        conn <- Map.lookup sa <$> liftIO (readTVarIO connsT) >>= \case
           Nothing -> do
             conn <- connectServer sa
             liftIO $ atomically (modifyTVar connsT (Map.insert sa conn))
