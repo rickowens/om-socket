@@ -1,10 +1,11 @@
-{-# OPTIONS_GHC -Wno-deprecations #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 {- | Socket utilities. -}
 module OM.Socket (
@@ -28,14 +29,14 @@ import Control.Concurrent (throwTo, Chan, newChan, writeChan, forkIO,
 import Control.Concurrent.LoadDistribution (evenlyDistributed,
   withResource)
 import Control.Concurrent.STM (TVar, newTVar, atomically, readTVar,
-  writeTVar, retry, newTVar, modifyTVar)
+  writeTVar, retry, newTVar, modifyTVar, readTVarIO)
 import Control.Exception (SomeException, bracketOnError, throw)
 import Control.Monad (void, join, when)
 import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
   runLoggingT, logError, logDebug, logInfo)
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 import Data.Binary (Binary, encode, get)
 import Data.Binary.Get (Decoder(Fail, Partial, Done), runGetIncremental,
   pushChunk)
@@ -498,20 +499,20 @@ loadBalanced name source = do
     clearCache = atomically (writeTVar cacheT Nothing)
 
   lb <- evenlyDistributed (
-      atomically (readTVar cacheT) >>= \case
+      readTVarIO cacheT >>= \case
         Nothing -> fillCache
         Just vals -> return vals
     )
   return $ \req -> do
     now <- liftIO getCurrentTime
-    lastUpdated <- liftIO $ atomically (readTVar lastUpdatedT)
+    lastUpdated <- liftIO $ readTVarIO lastUpdatedT
     when (diffUTCTime now lastUpdated > 10) . liftIO $
       atomically (writeTVar cacheT Nothing)
     logging <- askLoggerIO
     liftIO . withResource lb $ (`runLoggingT` logging) . \case
       Nothing -> fail $ "No backing instances of: " ++ T.unpack name
       Just sa -> do
-        conn <- Map.lookup sa <$> liftIO (atomically (readTVar connsT)) >>= \case
+        conn <- Map.lookup sa <$> liftIO (readTVarIO connsT) >>= \case
           Nothing -> do
             conn <- connectServer sa
             liftIO $ atomically (modifyTVar connsT (Map.insert sa conn))
@@ -577,7 +578,10 @@ setWarpEndpoint Endpoint {tls = Just _} = error "TLS not yet supported."
 newtype AddressDescription = AddressDescription {
     unAddressDescription :: Text
   }
-  deriving (IsString, Binary, Eq, Ord, FromJSON)
+  deriving stock (Generic)
+  deriving newtype (
+    IsString, Binary, Eq, Ord, FromJSON, ToJSON, FromJSONKey, ToJSONKey
+  )
 instance Show AddressDescription where
   show = T.unpack . unAddressDescription
 
