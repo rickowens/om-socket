@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -35,7 +36,7 @@ import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
   runLoggingT, logError, logDebug, logInfo)
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 import Data.Binary (Binary, encode, get)
 import Data.Binary.Get (Decoder(Fail, Partial, Done), runGetIncremental,
   pushChunk)
@@ -577,7 +578,10 @@ setWarpEndpoint Endpoint {tls = Just _} = error "TLS not yet supported."
 newtype AddressDescription = AddressDescription {
     unAddressDescription :: Text
   }
-  deriving (IsString, Binary, Eq, Ord, FromJSON)
+  deriving stock (Generic)
+  deriving newtype (
+    IsString, Binary, Eq, Ord, FromJSON, ToJSON, FromJSONKey, ToJSONKey
+  )
 instance Show AddressDescription where
   show = T.unpack . unAddressDescription
 
