@@ -580,7 +580,8 @@ newtype AddressDescription = AddressDescription {
   }
   deriving stock (Generic)
   deriving newtype (
-    IsString, Binary, Eq, Ord, FromJSON, ToJSON, FromJSONKey, ToJSONKey
+    IsString, Binary, Eq, Ord, FromJSON, ToJSON, FromJSONKey, ToJSONKey,
+    Semigroup, Monoid
   )
 instance Show AddressDescription where
   show = T.unpack . unAddressDescription
