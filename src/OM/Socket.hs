@@ -55,8 +55,6 @@ import Data.Void (Void)
 import Data.Word (Word32)
 import Distribution.Version (VersionRange)
 import GHC.Generics (Generic)
-import Network.Legion.Discovery.Client (unName, unServiceAddr, Name,
-  Discovery)
 import Network.Socket (Socket, socket, SocketType(Stream),
   defaultProtocol, setSocketOption, SocketOption(ReuseAddr), bind,
   listen, accept, SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix,
@@ -64,6 +62,7 @@ import Network.Socket (Socket, socket, SocketType(Stream),
   connect, getAddrInfo, addrAddress, HostName, ServiceName)
 import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
+import OM.Discovery.Client (unName, unServiceAddr, Name, Discovery)
 import Safe (readMay)
 import Text.Megaparsec (parse, Parsec, many, eof)
 import Text.Megaparsec.Char (char, satisfy, oneOf)
@@ -72,8 +71,8 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import qualified Network.Legion.Discovery.Client as D
 import qualified Network.Wai.Handler.Warp as Warp
+import qualified OM.Discovery.Client as D
 import qualified Text.Megaparsec as M
 
 
