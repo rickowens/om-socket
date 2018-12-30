@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                om-socket
-version:             0.7.0.0
+version:             0.7.0.1
 synopsis:            Socket utilities.
 -- description:         
 homepage:            https://github.com/owensmurray/om-socket
