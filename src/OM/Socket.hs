@@ -64,8 +64,8 @@ import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
 import OM.Discovery.Client (unName, unServiceAddr, Name, Discovery)
 import Safe (readMay)
-import Text.Megaparsec (parse, Parsec, many, eof)
-import Text.Megaparsec.Char (char, satisfy, oneOf)
+import Text.Megaparsec (parse, Parsec, many, eof, satisfy, oneOf)
+import Text.Megaparsec.Char (char)
 import qualified Data.ByteString as BS
 import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map

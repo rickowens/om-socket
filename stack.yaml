@@ -3,6 +3,8 @@ extra-package-dbs: []
 packages:
 - .
 extra-deps:
-- load-balancing-1.0.1.2
-- om-discovery-client-0.1.0.1
-resolver: lts-12.7
+- cached-io-1.1.0.0
+- load-balancing-1.0.1.3
+- om-discovery-client-0.1.1.1
+- text-show-3.7.5
+resolver: lts-13.0
