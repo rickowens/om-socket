@@ -3,8 +3,7 @@ extra-package-dbs: []
 packages:
 - .
 extra-deps:
-- cached-io-1.1.0.0
-- load-balancing-1.0.1.3
-- om-discovery-client-0.1.1.3
-- om-show-0.1.1.0
-resolver: lts-14.27
+  - http://localhost:4563/package/load-balancing-1.0.2.0.tar.gz
+  - http://localhost:4563/package/om-discovery-client-0.1.2.1.tar.gz
+  - http://localhost:4563/package/om-show-0.1.1.1.tar.gz
+resolver: lts-16.20

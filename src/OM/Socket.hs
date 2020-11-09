@@ -46,7 +46,6 @@ import Data.Conduit.Network (sinkSocket, sourceSocket)
 import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
-import Data.Monoid ((<>))
 import Data.Set ((\\), Set)
 import Data.String (IsString, fromString)
 import Data.Text (Text, stripPrefix)
@@ -55,8 +54,8 @@ import Data.Void (Void)
 import Data.Word (Word32)
 import Distribution.Version (VersionRange)
 import GHC.Generics (Generic)
-import Network.Socket (Family(AF_CAN, AF_INET, AF_INET6, AF_UNIX),
-  SockAddr(SockAddrCan, SockAddrInet, SockAddrInet6, SockAddrUnix),
+import Network.Socket (Family(AF_INET, AF_INET6, AF_UNIX),
+  SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix),
   SocketOption(ReuseAddr), SocketType(Stream), HostName, ServiceName,
   Socket, accept, addrAddress, bind, close, connect, defaultProtocol,
   getAddrInfo, listen, setSocketOption, socket)
@@ -80,14 +79,14 @@ import qualified Text.Megaparsec as M
   Open a "server" socket, which is a socket that accepts incoming requests
   and provides a way to respond to those requests.
 -}
-openServer :: (
-      Binary i,
-      Binary o,
-      MonadIO m,
-      MonadLoggerIO m,
-      Show i,
-      Show o
-    )
+openServer
+  :: ( Binary i
+     , Binary o
+     , MonadFail m
+     , MonadLoggerIO m
+     , Show i
+     , Show o
+     )
   => Endpoint
   -> ConduitT () (i, o -> m ()) m ()
 openServer Endpoint {tls = Just _} = fail "openServer: tls not yet supported."
@@ -171,7 +170,7 @@ openServer Endpoint {bindAddr} = do
   Opens an "ingress" socket, which is a socket that accepts a stream of
   messages without responding.
 -}
-openIngress :: (Binary i, MonadIO m)
+openIngress :: (Binary i, MonadIO m, MonadFail m)
   => Endpoint
   -> ConduitT () i m ()
 openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
@@ -214,6 +213,7 @@ openIngress Endpoint {bindAddr} = do
 openEgress :: (
       Binary o,
       MonadIO m,
+      MonadFail m,
       MonadThrow m
     )
   => AddressDescription
@@ -370,7 +370,6 @@ fam :: SockAddr -> Family
 fam SockAddrInet {} = AF_INET
 fam SockAddrInet6 {} = AF_INET6
 fam SockAddrUnix {} = AF_UNIX
-fam SockAddrCan {} = AF_CAN
 
 
 {- | Construct a coundiut source by reading forever from a 'Chan'. -}
@@ -381,7 +380,7 @@ chanToSource chan = do
 
 
 {- | Resolve a host:port address into a 'SockAddr'. -}
-resolveAddr :: (MonadIO m) => AddressDescription -> m SockAddr
+resolveAddr :: (MonadIO m, MonadFail m) => AddressDescription -> m SockAddr
 resolveAddr addr = do
   (host, port) <- parseAddr addr
   liftIO (getAddrInfo Nothing (Just host) (Just port)) >>= \case
@@ -390,7 +389,7 @@ resolveAddr addr = do
 
 
 {- | Parse a host:port address. -}
-parseAddr :: (Monad m) => AddressDescription -> m (HostName, ServiceName)
+parseAddr :: (MonadFail m) => AddressDescription -> m (HostName, ServiceName)
 parseAddr addr =
     case parse parser "$" (unAddressDescription addr) of
       Left err -> fail (show err)
