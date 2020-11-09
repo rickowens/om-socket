@@ -24,47 +24,47 @@ module OM.Socket (
 
 
 import Control.Applicative ((<|>))
-import Control.Concurrent (throwTo, Chan, newChan, writeChan, forkIO,
-  readChan, newEmptyMVar, putMVar, takeMVar, MVar)
+import Control.Concurrent (Chan, MVar, forkIO, newChan, newEmptyMVar,
+  putMVar, readChan, takeMVar, throwTo, writeChan)
 import Control.Concurrent.LoadDistribution (evenlyDistributed,
   withResource)
-import Control.Concurrent.STM (TVar, newTVar, atomically, readTVar,
-  writeTVar, retry, newTVar, modifyTVar, readTVarIO)
+import Control.Concurrent.STM (TVar, atomically, modifyTVar, newTVar,
+  readTVar, readTVarIO, retry, writeTVar)
 import Control.Exception (SomeException, bracketOnError, throw)
-import Control.Monad (void, join, when)
-import Control.Monad.Catch (try, MonadCatch, throwM, MonadThrow)
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.Logger (logWarn, MonadLoggerIO, askLoggerIO,
-  runLoggingT, logError, logDebug, logInfo)
-import Data.Aeson (FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+import Control.Monad (join, void, when)
+import Control.Monad.Catch (MonadCatch, MonadThrow, throwM, try)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Logger (MonadLoggerIO, askLoggerIO, logDebug,
+  logError, logInfo, logWarn, runLoggingT)
+import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Binary (Binary, encode, get)
-import Data.Binary.Get (Decoder(Fail, Partial, Done), runGetIncremental,
-  pushChunk)
-import Data.Conduit (awaitForever, yield, runConduit, (.|), transPipe,
-  ConduitT)
-import Data.Conduit.Network (sourceSocket, sinkSocket)
+import Data.Binary.Get (Decoder(Done, Fail, Partial), pushChunk,
+  runGetIncremental)
+import Data.Conduit ((.|), ConduitT, awaitForever, runConduit, transPipe,
+  yield)
+import Data.Conduit.Network (sinkSocket, sourceSocket)
 import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Monoid ((<>))
-import Data.Set (Set, (\\))
-import Data.String (fromString, IsString)
+import Data.Set ((\\), Set)
+import Data.String (IsString, fromString)
 import Data.Text (Text, stripPrefix)
-import Data.Time (getCurrentTime, diffUTCTime)
+import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Void (Void)
 import Data.Word (Word32)
 import Distribution.Version (VersionRange)
 import GHC.Generics (Generic)
-import Network.Socket (Socket, socket, SocketType(Stream),
-  defaultProtocol, setSocketOption, SocketOption(ReuseAddr), bind,
-  listen, accept, SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix,
-  SockAddrCan), Family(AF_INET, AF_INET6, AF_UNIX, AF_CAN), close,
-  connect, getAddrInfo, addrAddress, HostName, ServiceName)
+import Network.Socket (Family(AF_CAN, AF_INET, AF_INET6, AF_UNIX),
+  SockAddr(SockAddrCan, SockAddrInet, SockAddrInet6, SockAddrUnix),
+  SocketOption(ReuseAddr), SocketType(Stream), HostName, ServiceName,
+  Socket, accept, addrAddress, bind, close, connect, defaultProtocol,
+  getAddrInfo, listen, setSocketOption, socket)
 import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
-import OM.Discovery.Client (unName, unServiceAddr, Name, Discovery)
+import OM.Discovery.Client (Discovery, Name, unName, unServiceAddr)
 import Safe (readMay)
-import Text.Megaparsec (parse, Parsec, many, eof, satisfy, oneOf)
+import Text.Megaparsec (Parsec, eof, many, oneOf, parse, satisfy)
 import Text.Megaparsec.Char (char)
 import qualified Data.ByteString as BS
 import qualified Data.Conduit.List as CL
