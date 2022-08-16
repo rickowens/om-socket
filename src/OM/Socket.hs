@@ -179,7 +179,7 @@ data Endpoint = Endpoint
   { bindAddr :: AddressDescription
   ,      tls :: Maybe TlsConfig
   }
-  deriving (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq, Ord)
 instance FromJSON Endpoint
 
 
@@ -188,7 +188,7 @@ data TlsConfig = TlsConfig {
     cert :: FilePath,
      key :: FilePath
   }
-  deriving (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq, Ord)
 instance FromJSON TlsConfig
 
 
