@@ -1,0 +1,6 @@
+packages:
+  "."
+package om-socket
+  ghc-options:
+    -Werror
+
