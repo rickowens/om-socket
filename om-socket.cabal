@@ -4,13 +4,14 @@ version:             0.11.0.0
 synopsis:            Socket utilities.
 -- description:         
 homepage:            https://github.com/owensmurray/om-socket
-license:             NONE
+license:             MIT
 author:              Rick Owens
 maintainer:          rick@owensmurray.com
 -- copyright:           
 category:            Network
 build-type:          Simple
--- extra-source-files:
+extra-source-files:
+  LICENSE
 
 common warnings
   ghc-options:
