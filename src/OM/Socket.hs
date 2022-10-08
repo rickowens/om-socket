@@ -10,7 +10,6 @@ module OM.Socket (
   openIngress,
   openEgress,
   resolveAddr,
-  TlsConfig(..),
 ) where
 
 
@@ -166,15 +165,6 @@ listenSocket addr = liftIO $ do
   bind so addr
   listen so 5
   return so
-
-
-{- | Tls configuration. -}
-data TlsConfig = TlsConfig {
-    cert :: FilePath,
-     key :: FilePath
-  }
-  deriving stock (Generic, Show, Eq, Ord)
-instance FromJSON TlsConfig
 
 
 {- |
