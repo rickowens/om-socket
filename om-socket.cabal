@@ -1,6 +1,6 @@
 cabal-version:       3.0
 name:                om-socket
-version:             0.10.0.0
+version:             0.11.0.0
 synopsis:            Socket utilities.
 -- description:         
 homepage:            https://github.com/owensmurray/om-socket
