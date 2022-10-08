@@ -2,7 +2,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {- | Socket utilities. -}
@@ -11,9 +10,7 @@ module OM.Socket (
   openIngress,
   openEgress,
   resolveAddr,
-  Endpoint(..),
   TlsConfig(..),
-  setWarpEndpoint,
 ) where
 
 
@@ -30,7 +27,7 @@ import Data.Binary.Get (Decoder(Done, Fail, Partial), pushChunk,
 import Data.Conduit ((.|), ConduitT, yield)
 import Data.Conduit.Network (sinkSocket)
 import Data.Conduit.Serialization.Binary (conduitEncode)
-import Data.String (IsString, fromString)
+import Data.String (IsString)
 import Data.Text (Text)
 import Data.Void (Void)
 import GHC.Generics (Generic)
@@ -40,13 +37,11 @@ import Network.Socket (Family(AF_INET, AF_INET6, AF_UNIX),
   Socket, accept, addrAddress, bind, close, connect, defaultProtocol,
   getAddrInfo, listen, setSocketOption, socket)
 import Network.Socket.ByteString (recv)
-import Safe (readMay)
 import Text.Megaparsec (Parsec, eof, many, oneOf, parse, satisfy)
 import Text.Megaparsec.Char (char)
-import qualified Data.ByteString as BS
-import qualified Data.Text as T
-import qualified Network.Wai.Handler.Warp as Warp
-import qualified Text.Megaparsec as M
+import qualified Data.ByteString as BS (null)
+import qualified Data.Text as T (unpack)
+import qualified Text.Megaparsec as M (MonadParsec(try))
 
 
 {- |
@@ -54,10 +49,9 @@ import qualified Text.Megaparsec as M
   messages without responding.
 -}
 openIngress :: (Binary i, MonadIO m, MonadFail m)
-  => Endpoint
+  => AddressDescription
   -> ConduitT () i m ()
-openIngress Endpoint {tls = Just _} = fail "openIngress: tls not yet supported"
-openIngress Endpoint {bindAddr} = do
+openIngress bindAddr = do
     so <- listenSocket =<< resolveAddr bindAddr
     mvar <- liftIO newEmptyMVar
     void . liftIO . forkIO $ acceptLoop so mvar
@@ -174,15 +168,6 @@ listenSocket addr = liftIO $ do
   return so
 
 
-{- | A server endpoint configuration. -}
-data Endpoint = Endpoint
-  { bindAddr :: AddressDescription
-  ,      tls :: Maybe TlsConfig
-  }
-  deriving stock (Generic, Show, Eq, Ord)
-instance FromJSON Endpoint
-
-
 {- | Tls configuration. -}
 data TlsConfig = TlsConfig {
     cert :: FilePath,
@@ -190,23 +175,6 @@ data TlsConfig = TlsConfig {
   }
   deriving stock (Generic, Show, Eq, Ord)
 instance FromJSON TlsConfig
-
-
-{- |
-  Sets the port and bind address in the warp settings to run on the indicated
-  endpoint.
--}
-setWarpEndpoint :: Endpoint -> Warp.Settings  -> Warp.Settings
-setWarpEndpoint Endpoint {bindAddr, tls = Nothing} =
-  case parseAddr bindAddr of
-    Nothing -> error $ "Invalid address: " ++ show bindAddr
-    Just (host, serviceAddress) ->
-      case readMay serviceAddress of
-        Nothing -> error $ "Invalid port: " ++ show serviceAddress
-        Just port ->
-          Warp.setHost (fromString host) . Warp.setPort port
-
-setWarpEndpoint Endpoint {tls = Just _} = error "TLS not yet supported."
 
 
 {- |
