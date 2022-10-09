@@ -29,10 +29,10 @@ newtype Responsee = EchoResponse String
 main :: IO ()
 main =
   {-
-    Don't actually call serveForever, because the "test" we are using to make
+    Don't actually call server, because the "test" we are using to make
     sure this compiles will never finish running!
   -}
-  -- serveForever
+  server
   pure ()
 
 
