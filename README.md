@@ -165,7 +165,7 @@ newtype Responsee = EchoResponse String
   deriving newtype (Binary, Show)
 
 
-{- | Simple echo resposne server. -}
+{- | Simple echo resposne client. -}
 main :: IO ()
 main = do
   client <-
