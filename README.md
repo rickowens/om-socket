@@ -4,6 +4,7 @@
 - [Examples](#examples)
     - [Open an Ingress service](#open-an-ingress-service)
     - [Open an Egress connection](#open-an-egress-connection)
+    - [Start a server process](#start-a-server-process)
 
 ## Overview
 
