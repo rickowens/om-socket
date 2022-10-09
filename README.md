@@ -103,8 +103,6 @@ main =
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wwarn #-}
-
 module Main (main) where
 
 import Conduit ((.|), awaitForever, runConduit)
@@ -124,17 +122,7 @@ newtype Responsee = EchoResponse String
 
 
 main :: IO ()
-main = do
-  {-
-    Don't actually call server, because the "test" we are using to make
-    sure this compiles will never finish running!
-  -}
-  -- server
-  pure ()
-
-
-server :: IO ()
-server =
+main =
   runStdoutLoggingT . runConduit $
     pure ()
     .| openServer "localhost:9000" Nothing
