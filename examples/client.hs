@@ -25,7 +25,7 @@ main = do
     Don't actually call sendRequests, because there is no server running to
     connect to, which will cause an error, which will cause the test to fail.
   -}
-  sendRequests
+  -- sendRequests
   pure ()
 
 
