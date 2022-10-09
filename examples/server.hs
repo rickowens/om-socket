@@ -21,6 +21,7 @@ newtype Request = EchoRequest String
 
 {- | The response sent back to the client. -}
 newtype Responsee = EchoResponse String
+  deriving newtype (Binary)
 
 
 main :: IO ()
