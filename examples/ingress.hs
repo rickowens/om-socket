@@ -3,6 +3,8 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-# OPTIONS_GHC -Wwarn #-}
+
 module Main (main) where
 
 import Conduit ((.|), awaitForever, runConduit)
@@ -19,7 +21,10 @@ data Msg
   deriving anyclass (Binary)
 
 main :: IO ()
-main = do
+main = pure ()
+
+serveForever :: IO ()
+serveForever =
   runConduit $
     openIngress "localhost:9000"
     .| awaitForever (\msg ->
