@@ -168,16 +168,6 @@ newtype Responsee = EchoResponse String
 {- | Simple echo resposne server. -}
 main :: IO ()
 main = do
-  {-
-    Don't actually call sendRequests, because there is no server running to
-    connect to, which will cause an error, which will cause the test to fail.
-  -}
-  -- sendRequests
-  pure ()
-
-
-sendRequests :: IO ()
-sendRequests = do
   client <-
     runStdoutLoggingT $
       connectServer "localhost:9000" Nothing
