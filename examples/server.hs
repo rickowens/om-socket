@@ -8,13 +8,11 @@
 
 module Main (main) where
 
-import Conduit ((.|), awaitForever, runConduit)
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import Control.Monad.Logger
-import Control.Monad.Trans.Class
-import Data.Binary (Binary)
-import GHC.Generics (Generic)
-import OM.Socket
+import Conduit ( (.|), awaitForever, runConduit )
+import Control.Monad.Logger ( runStdoutLoggingT )
+import Control.Monad.Trans.Class ( MonadTrans(lift) )
+import Data.Binary ( Binary )
+import OM.Socket ( openServer )
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
