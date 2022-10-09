@@ -94,3 +94,7 @@ main =
     .| openEgress "localhost:9000"
 
 ```
+
+### Start a server process
+
+
