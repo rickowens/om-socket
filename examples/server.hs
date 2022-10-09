@@ -4,15 +4,15 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wwarn #-}
+-- {-# OPTIONS_GHC -Wwarn #-}
 
 module Main (main) where
 
-import Conduit ( (.|), awaitForever, runConduit )
-import Control.Monad.Logger ( runStdoutLoggingT )
-import Control.Monad.Trans.Class ( MonadTrans(lift) )
-import Data.Binary ( Binary )
-import OM.Socket ( openServer )
+import Conduit ((.|), awaitForever, runConduit)
+import Control.Monad.Logger (runStdoutLoggingT)
+import Control.Monad.Trans.Class (MonadTrans(lift))
+import Data.Binary (Binary)
+import OM.Socket (openServer)
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
@@ -30,7 +30,7 @@ main =
     Don't actually call server, because the "test" we are using to make
     sure this compiles will never finish running!
   -}
-  -- server
+  server
   pure ()
 
 
