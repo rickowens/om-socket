@@ -41,6 +41,6 @@ server =
     pure ()
     .| openServer "localhost:9000" Nothing
     .| awaitForever (\(EchoRequest str, respond) ->
-        liftIO $ respond (EchoResponse str)
+        lift $ respond (EchoResponse str)
     )
 
