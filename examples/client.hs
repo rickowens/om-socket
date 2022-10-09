@@ -21,7 +21,7 @@ newtype Responsee = EchoResponse String
 {- | Simple echo resposne server. -}
 main :: IO ()
 main = do
-  client <- connectClient "localhost:9000"
+  client <- connectServer "localhost:9000"
   putStrLn =<< client (EchoRequest "hello")
   putStrLn =<< client (EchoRequest "world")
 
