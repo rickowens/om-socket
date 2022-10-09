@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Control.Monad.Logger (runStdoutLoggingT)
 import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.Logger (runStdoutLoggingT)
 import Data.Binary (Binary)
@@ -22,7 +23,9 @@ newtype Responsee = EchoResponse String
 {- | Simple echo resposne server. -}
 main :: IO ()
 main = do
-  client <- connectServer "localhost:9000" Nothing
+  client <-
+    runStdoutLoggingT $
+      connectServer "localhost:9000" Nothing
   putStrLn =<< client (EchoRequest "hello")
   putStrLn =<< client (EchoRequest "world")
 
