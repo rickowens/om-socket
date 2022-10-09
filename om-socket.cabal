@@ -12,6 +12,7 @@ category:            Network
 build-type:          Simple
 extra-source-files:
   LICENSE
+  README.md
 
 common warnings
   ghc-options:
