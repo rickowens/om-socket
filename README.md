@@ -1,9 +1,11 @@
 # om-socket
 
-- [om-socket](#om-socket)
-    - [Examples](#examples)
-        - [Open an Ingress service](#open-an-ingress-service)
-        - [Open an Egress connection](#open-an-egress-connection)
+- [Overview](#overview)
+- [Examples](#examples)
+    - [Open an Ingress service](#open-an-ingress-service)
+    - [Open an Egress connection](#open-an-egress-connection)
+
+## Overview
 
 This package provides some utilities for Haskell programs to communicate raw
 binary messages over the network. It includes:
