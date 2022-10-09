@@ -2,9 +2,10 @@
 
 module Main (main) where
 
-import Data.Binary
-import OM.Socket
 import Conduit
+import Data.Binary
+import GHC.Generics
+import OM.Socket
 
 {- | The messages that arrive on the socket. -}
 data Msg
