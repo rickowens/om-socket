@@ -30,7 +30,7 @@ main = do
     Don't actually call server, because the "test" we are using to make
     sure this compiles will never finish running!
   -}
-  server
+  -- server
   pure ()
 
 
