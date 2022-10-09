@@ -1,7 +1,7 @@
 -- {-# LANGUAGE DeriveAnyClass #-}
 -- {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -Wwarn #-}
