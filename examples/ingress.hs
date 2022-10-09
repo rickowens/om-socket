@@ -5,11 +5,11 @@
 
 module Main (main) where
 
-import Conduit
-import Control.Monad.IO.Class
-import Data.Binary
-import GHC.Generics
-import OM.Socket
+import Conduit ((.|), awaitForever, runConduit)
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import OM.Socket (openIngress)
 
 {- | The messages that arrive on the socket. -}
 data Msg
