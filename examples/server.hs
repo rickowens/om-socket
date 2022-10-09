@@ -12,7 +12,7 @@ import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
-import OM.Socket (openIngress)
+import OM.Socket
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
