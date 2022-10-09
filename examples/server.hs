@@ -22,6 +22,7 @@ newtype Responsee = EchoResponse String
   deriving newtype (Binary, Show)
 
 
+{- | Simple echo resposne server. -}
 main :: IO ()
 main = do
   {-
@@ -38,6 +39,11 @@ server =
     pure ()
     .| openServer "localhost:9000" Nothing
     .| awaitForever (\(EchoRequest str, respond) ->
+        {-
+          You don't necessarily have to respond right away if you don't
+          want to. You can cache the responder away in some state and
+          get back to it at some later time if you like.
+        -}
         lift $ respond (EchoResponse str)
     )
 
