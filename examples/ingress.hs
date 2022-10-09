@@ -21,7 +21,13 @@ data Msg
   deriving anyclass (Binary)
 
 main :: IO ()
-main = pure ()
+main =
+  {-
+    Don't actually call serveForever, because the "test" we are using to make
+    sure this compiles will never finish running!
+  -}
+  -- serveForever
+  pure ()
 
 serveForever :: IO ()
 serveForever =
