@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 
 module Main (main) where
 
