@@ -2,6 +2,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-# OPTIONS_GHC -Wwarn #-}
+
 module Main (main) where
 
 import Control.Monad.Logger (runStdoutLoggingT)
