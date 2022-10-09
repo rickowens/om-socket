@@ -11,6 +11,7 @@ module Main (main) where
 import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Control.Monad.Logger
+import Control.Monad.Trans.Class
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import OM.Socket
