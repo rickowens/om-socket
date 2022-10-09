@@ -7,8 +7,7 @@
 
 module Main (main) where
 
-import Conduit ((.|), awaitForever, runConduit, yield)
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import Conduit ((.|), runConduit, yield)
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import OM.Socket (openEgress)
