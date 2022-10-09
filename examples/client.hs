@@ -2,7 +2,6 @@ module Main (main) where
 
 import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.Logger (runStdoutLoggingT)
-import Control.Monad.Trans.Class (MonadTrans(lift))
 import Data.Binary (Binary)
 import OM.Socket
 
