@@ -18,7 +18,7 @@ import OM.Socket
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
-  deriving newtype (Binary)
+  deriving newtype (Binary, Show)
 
 
 {- | The response sent back to the client. -}
