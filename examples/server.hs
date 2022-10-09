@@ -1,6 +1,6 @@
 -- {-# LANGUAGE DeriveAnyClass #-}
 -- {-# LANGUAGE DeriveGeneric #-}
--- {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingStrategies #-}
 -- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- {-# LANGUAGE OverloadedStrings #-}
 
