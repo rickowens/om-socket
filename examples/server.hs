@@ -36,7 +36,8 @@ main =
 server :: IO ()
 server =
   runConduit $
-    openServer "localhost:9000" Nothing
+    pure ()
+    .| openServer "localhost:9000" Nothing
     .| awaitForever (\(EchoRequest str, respond) ->
         respond (EchoResponse str)
     )
