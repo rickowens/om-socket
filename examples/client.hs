@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+
 module Main (main) where
 
 import Conduit ((.|), awaitForever, runConduit)
