@@ -5,10 +5,8 @@
 module Main (main) where
 
 import Control.Monad.Logger (runStdoutLoggingT)
-import Conduit ((.|), awaitForever, runConduit)
-import Control.Monad.Logger (runStdoutLoggingT)
 import Data.Binary (Binary)
-import OM.Socket
+import OM.Socket (connectServer)
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
