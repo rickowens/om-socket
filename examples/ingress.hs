@@ -6,6 +6,7 @@
 module Main (main) where
 
 import Conduit
+import Control.Monad.IO.Class
 import Data.Binary
 import GHC.Generics
 import OM.Socket
@@ -23,8 +24,8 @@ main = do
     openIngress "localhost:9000"
     .| awaitForever (\msg ->
          case msg of
-           A -> putStrLn "Got A"
-           B -> putStrLn "Got B"
+           A -> liftIO $ putStrLn "Got A"
+           B -> liftIO $ putStrLn "Got B"
        )
 
   
