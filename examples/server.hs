@@ -4,7 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- {-# OPTIONS_GHC -Wwarn #-}
+{-# OPTIONS_GHC -Wwarn #-}
 
 module Main (main) where
 
