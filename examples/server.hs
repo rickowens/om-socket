@@ -10,6 +10,7 @@ module Main (main) where
 
 import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.Logger
 import Data.Binary (Binary)
 import GHC.Generics (Generic)
 import OM.Socket
@@ -36,7 +37,7 @@ main =
 
 server :: IO ()
 server =
-  runConduit $
+  runStdoutLoggingT . runConduit $
     pure ()
     .| openServer "localhost:9000" Nothing
     .| awaitForever (\(EchoRequest str, respond) ->
