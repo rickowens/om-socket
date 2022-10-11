@@ -2,12 +2,13 @@ cabal-version:       3.0
 name:                om-socket
 version:             0.11.0.2
 synopsis:            Socket utilities.
--- description:         
+description:         Binary ingress server, egress client, and
+                     bidirectional binarry client/server
 homepage:            https://github.com/owensmurray/om-socket
 license:             MIT
 author:              Rick Owens
 maintainer:          rick@owensmurray.com
--- copyright:           
+copyright:           2022 Rick Owens
 category:            Network
 build-type:          Simple
 extra-source-files:
