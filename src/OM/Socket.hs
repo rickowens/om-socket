@@ -24,17 +24,17 @@ module OM.Socket (
 ) where
 
 
-import Control.Applicative ((<|>))
+import Control.Applicative (Alternative((<|>)))
 import Control.Concurrent (Chan, MVar, forkIO, newChan, newEmptyMVar,
   putMVar, readChan, takeMVar, throwTo, writeChan)
 import Control.Concurrent.STM (TVar, atomically, newTVar, readTVar,
   retry, writeTVar)
 import Control.Exception (SomeException, bracketOnError, throw)
 import Control.Monad (join, void, when)
-import Control.Monad.Catch (MonadCatch, MonadThrow, throwM, try)
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Logger.CallStack (MonadLoggerIO, askLoggerIO,
-  logDebug, logError, logWarn, runLoggingT)
+import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, try)
+import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.Logger.CallStack (LoggingT(runLoggingT),
+  MonadLoggerIO(askLoggerIO), logDebug, logError, logWarn)
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Binary (Binary(get), encode)
 import Data.Binary.Get (Decoder(Done, Fail, Partial), pushChunk,
@@ -51,17 +51,23 @@ import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Void (Void)
 import Data.Word (Word32)
 import GHC.Generics (Generic)
-import Network.Socket (Family(AF_INET, AF_INET6, AF_UNIX),
-  SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix),
+import Network.Socket (AddrInfo(addrAddress), Family(AF_INET, AF_INET6,
+  AF_UNIX), SockAddr(SockAddrInet, SockAddrInet6, SockAddrUnix),
   SocketOption(ReuseAddr), SocketType(Stream), HostName, ServiceName,
-  Socket, accept, addrAddress, bind, close, connect, defaultProtocol,
-  getAddrInfo, listen, setSocketOption, socket)
+  Socket, accept, bind, close, connect, defaultProtocol, getAddrInfo,
+  listen, setSocketOption, socket)
 import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
 import Network.TLS (ClientParams, Context, ServerParams, contextNew,
   handshake, recvData, sendData)
 import OM.Show (showt)
-import Text.Megaparsec (Parsec, eof, many, oneOf, parse, satisfy)
+import Prelude (Applicative(pure), Bool(False, True), Bounded(minBound),
+  Either(Left, Right), Enum(succ), Eq((/=)), Functor(fmap), Maybe(Just,
+  Nothing), Monad((>>), (>>=), return), MonadFail(fail), Semigroup((<>)),
+  Show(show), ($), (++), (.), (=<<), IO, Monoid, Num, Ord, String,
+  sequence_, snd, userError)
+import Text.Megaparsec (MonadParsec(eof), Parsec, many, oneOf, parse,
+  satisfy)
 import Text.Megaparsec.Char (char)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
