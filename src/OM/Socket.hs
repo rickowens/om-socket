@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {- | Socket utilities. -}
 module OM.Socket (
@@ -24,30 +25,25 @@ module OM.Socket (
 ) where
 
 
-import Control.Applicative (Alternative((<|>)))
-import Control.Concurrent (Chan, MVar, forkIO, newChan, newEmptyMVar,
-  putMVar, readChan, takeMVar, throwTo, writeChan)
-import Control.Concurrent.STM (TVar, atomically, newTVar, readTVar,
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent.STM (TVar, atomically, newTVarIO, readTVar,
   retry, writeTVar)
 import Control.Exception (SomeException, bracketOnError, throw)
-import Control.Monad (join, void, when)
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow(throwM), MonadCatch, try)
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Logger.CallStack (LoggingT(runLoggingT),
-  MonadLoggerIO(askLoggerIO), logDebug, logError, logWarn)
+  MonadLoggerIO(askLoggerIO), NoLoggingT(runNoLoggingT), MonadLogger,
+  logDebug, logError, logWarn)
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Binary (Binary(get), encode)
 import Data.Binary.Get (Decoder(Done, Fail, Partial), pushChunk,
   runGetIncremental)
 import Data.ByteString (ByteString)
-import Data.Conduit ((.|), ConduitT, awaitForever, runConduit, transPipe,
-  yield)
-import Data.Conduit.Network (sinkSocket, sourceSocket)
-import Data.Conduit.Serialization.Binary (conduitDecode, conduitEncode)
+import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.String (IsString)
 import Data.Text (Text)
-import Data.Time (diffUTCTime, getCurrentTime)
 import Data.Void (Void)
 import Data.Word (Word32)
 import GHC.Generics (Generic)
@@ -60,20 +56,25 @@ import Network.Socket.ByteString (recv)
 import Network.Socket.ByteString.Lazy (sendAll)
 import Network.TLS (ClientParams, Context, ServerParams, contextNew,
   handshake, recvData, sendData)
+import OM.Fork (Race, race)
 import OM.Show (showt)
 import Prelude (Applicative(pure), Bool(False, True), Bounded(minBound),
   Either(Left, Right), Enum(succ), Eq((/=)), Functor(fmap), Maybe(Just,
-  Nothing), Monad((>>), (>>=), return), MonadFail(fail), Semigroup((<>)),
-  Show(show), ($), (++), (.), (=<<), IO, Monoid, Num, Ord, String,
-  sequence_, snd, userError)
+  Nothing), Monad((>>), (>>=), return), MonadFail(fail), Monoid(mempty),
+  Semigroup((<>)), Show(show), ($), (++), (.), (=<<), IO, Num, Ord,
+  String, flip, snd, userError)
+import Streaming (Alternative((<|>)), MFunctor(hoist), MonadIO(liftIO),
+  MonadTrans(lift), Of, Stream, join, void)
+import Streaming.Binary (decoded)
+import Streaming.ByteString (ByteStream, reread)
 import Text.Megaparsec (MonadParsec(eof), Parsec, many, oneOf, parse,
   satisfy)
 import Text.Megaparsec.Char (char)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
-import qualified Data.Conduit.List as CL
 import qualified Data.Map as Map
 import qualified Data.Text as T
+import qualified Streaming.Prelude as S
 import qualified Text.Megaparsec as M
 
 
@@ -84,35 +85,32 @@ import qualified Text.Megaparsec as M
   elements off the socket and pushes them onto the stream.
 -}
 openIngress
-  :: ( Binary i
+  :: forall i m never_returns.
+     ( Binary i
      , MonadFail m
      , MonadIO m
+     , Race
      )
   => AddressDescription
-  -> ConduitT () i m ()
+  -> Stream (Of i) m never_returns
 openIngress bindAddr = do
     so <- listenSocket =<< resolveAddr bindAddr
     mvar <- liftIO newEmptyMVar
-    void . liftIO . forkIO $ acceptLoop so mvar
-    mvarToSource mvar
+    liftIO
+      . runNoLoggingT
+      . race "ingress accept loop"
+      . liftIO
+      $ acceptLoop so mvar
+    mvarToStream mvar
   where
-    mvarToSource
-      :: (MonadIO m)
-      => MVar a
-      -> ConduitT () a m ()
-    mvarToSource mvar = do
-      liftIO (takeMVar mvar) >>= yield
-      mvarToSource mvar
-
-    acceptLoop :: (Binary i) => Socket -> MVar i -> IO ()
+    acceptLoop :: Socket -> MVar i -> IO ()
     acceptLoop so mvar = do
       (conn, _) <- accept so
       void . forkIO $ feed (runGetIncremental get) conn mvar
       acceptLoop so mvar
 
     feed
-      :: (Binary i)
-      => Decoder i
+      :: Decoder i
       -> Socket
       -> MVar i
       -> IO ()
@@ -135,13 +133,18 @@ openEgress
   :: ( Binary o
      , MonadFail m
      , MonadIO m
-     , MonadThrow m
      )
   => AddressDescription
-  -> ConduitT o Void m ()
-openEgress addr = do
+  -> Stream (Of o) m r
+  -> m r
+openEgress addr stream = do
   so <- connectSocket =<< resolveAddr addr
-  conduitEncode .| sinkSocket so
+  result <-
+    S.mapM_
+      (liftIO . sendAll so . encode)
+      stream
+  liftIO (close so)
+  pure result
 
 
 {- | Guess the family of a `SockAddr`. -}
@@ -217,118 +220,86 @@ listenSocket addr = liftIO $ do
   and provides a way to respond to those requests.
 -}
 openServer
-  :: ( Binary request
+  :: forall request response m never_returns.
+     ( Binary request
      , Binary response
+     , MonadLogger m
+     , MonadCatch m
      , MonadFail m
-     , MonadLoggerIO m
-     , Show request
-     , Show response
+     , MonadUnliftIO m
+     , Race
      )
   => AddressDescription
   -> Maybe (IO ServerParams)
-  -> ConduitT Void (request, response -> m Responded) m ()
+  -> Stream (Of (request, response -> m Responded)) m never_returns
 openServer bindAddr tls = do
     so <- listenSocket =<< resolveAddr bindAddr
-    requestChan <- liftIO newChan
-    logging <- askLoggerIO
-    void . liftIO . forkIO . (`runLoggingT` logging) $ acceptLoop so requestChan
-    chanToSource requestChan
+    requestMVar <- liftIO newEmptyMVar
+    lift
+      . race "server accept loop"
+      $ acceptLoop so requestMVar
+    mvarToStream requestMVar
   where
     acceptLoop
-      :: ( Binary i
-         , Binary o
-         , MonadIO m
-         , MonadLoggerIO n
-         , Show i
-         , Show o
-         )
-      => Socket
-      -> Chan (i, o -> m Responded)
-      -> n ()
-    acceptLoop so requestChan = do
+      :: Socket
+      -> MVar (request, response -> m Responded)
+      -> m void
+    acceptLoop so requestMVar = do
       (conn, ra) <- liftIO (accept so)
-      (inputSource, outputSink) <- prepareConnection conn
       logDebug $ "New connection: " <>  showt ra
-      responseChan <- liftIO newChan
-      logging <- askLoggerIO
-      rtid <-
-        liftIO
-        . forkIO
-        . (`runLoggingT` logging)
-        $ responderThread responseChan outputSink
-      void . liftIO . forkIO . (`runLoggingT` logging) $ do
-        result <- try $ runConduit (
-            pure ()
-            .| transPipe liftIO inputSource
-            .| conduitDecode
-            .| awaitForever (\req@Request {messageId, payload} -> do
-                logDebug $ showt ra <> ": Got request: " <> showt req
-                start <- liftIO getCurrentTime
-                yield (
-                    payload,
-                    \res -> do
-                      liftIO . writeChan responseChan . Response messageId $ res
-                      end <- liftIO getCurrentTime
-                      liftIO . (`runLoggingT` logging) . logDebug
-                        $ showt ra <> ": Responded to " <> showt messageId <> " in ("
-                        <> showt (diffUTCTime end start) <> ")"
-                      pure Responded
-                  )
-              )
-            .| CL.mapM_ (liftIO . writeChan requestChan)
-          )
-        case result of
-          Left err -> liftIO $ throwTo rtid (err :: SomeException)
-          Right () -> return ()
-        logDebug $ "Closed connection: " <>  showt ra
-      acceptLoop so requestChan
+      (input, send) <- prepareConnection conn
+      void . liftIO . forkIO $ handleConnection input send requestMVar
+      acceptLoop so requestMVar
 
-    prepareConnection
-      :: (MonadIO m)
-      => Socket
-      -> m (ConduitT Void ByteString IO (), ConduitT ByteString Void IO ())
-    prepareConnection conn =
-        case tls of
-          Nothing -> pure (sourceSocket conn, sinkSocket conn)
-          Just getParams ->
-            liftIO $ do
-              ctx <- contextNew conn =<< getParams
-              handshake ctx
-              pure (input ctx, output ctx)
+    handleConnection
+      :: ByteStream IO () {-^ raw bytes input from the socket -}
+      -> (BSL.ByteString -> m ()) {-^ How to send bytes back -}
+      -> MVar (request, response -> m Responded)
+         {-^ how we stream (req, respond) tuples to the client code. -}
+      -> IO ()
+    handleConnection input send requestMVar =
+        void $
+          S.mapM_
+            sendRequestToMVar
+            (decoded input)
       where
-        output :: Context -> ConduitT ByteString Void IO ()
-        output ctx = awaitForever (sendData ctx . BSL.fromStrict)
+        sendRequestToMVar :: Request request -> IO ()
+        sendRequestToMVar Request { messageId , payload } =
+          putMVar
+            requestMVar
+            ( payload
+            , respond messageId
+            )
 
-        input :: Context -> ConduitT Void ByteString IO ()
-        input ctx = do
-          bytes <- recvData ctx
-          if BS.null bytes then
-            pure ()
-          else do
-            yield bytes
-            input ctx
+        respond :: MessageId -> response -> m Responded
+        respond responseTo response = do
+          send . encode $ Response { responseTo , response }
+          pure Responded
 
-    responderThread :: (
-          Binary p,
-          MonadLoggerIO m,
-          MonadThrow m,
-          Show p
-        )
-      => Chan (Response p)
-      -> ConduitT ByteString Void IO ()
-      -> m ()
-    responderThread chan outputSink = runConduit (
-        pure ()
-        .| chanToSource chan
-        .| awaitForever (\res@Response {responseTo, response} -> do
-            logDebug
-              $ "Responding to " <> showt responseTo
-              <> " with: " <> showt response
-            yield res
+    {- Maybe make a TLS connection. -}
+    prepareConnection
+      :: Socket
+      -> m
+          ( ByteStream IO ()
+          , BSL.ByteString -> m ()
           )
-        .| conduitEncode
-        .| transPipe liftIO outputSink
-      )
+    prepareConnection conn =
+      case tls of
+        Nothing ->
+          pure
+            ( rereadNull
+                (flip recv 4096)
+                conn
+            , liftIO . sendAll conn
+            )
+        Just getParams ->
+          liftIO $ do
+            ctx <- contextNew conn =<< getParams
+            handshake ctx
+            pure
+              ( rereadNull recvData ctx
+              , sendData ctx
+              )
 
 
 {- |
@@ -337,7 +308,8 @@ openServer bindAddr tls = do
   the server.
 -}
 connectServer
-  :: ( Binary request
+  :: forall n request m response.
+     ( Binary request
      , Binary response
      , MonadIO m
      , MonadLoggerIO n
@@ -350,24 +322,26 @@ connectServer addr tls = do
     logging <- askLoggerIO
     liftIO $ do
       so <- connectSocket =<< resolveAddr addr
-      state <- atomically (newTVar ClientState {
-          csAlive = True,
-          csResponders = Map.empty,
-          csMessageId = minBound,
-          csMessageQueue = []
-        })
-      (send, reqSource) <- prepareConnection so
+      state <-
+        newTVarIO
+          ClientState
+            { csServerAlive = True
+            , csResponders = Map.empty
+            , csMessageId = minBound
+            , csRequestQueue = []
+            }
+      (send, responseSource) <- prepareConnection so
       void . forkIO $ (`runLoggingT` logging) (requestThread send state)
-      void . forkIO $ (`runLoggingT` logging) (responseThread reqSource state)
+      void . forkIO $ (`runLoggingT` logging) (responseThread responseSource state)
       return (\i -> liftIO $ do
           mvar <- newEmptyMVar
           join . atomically $
             readTVar state >>= \case
-              ClientState {csAlive = False} -> return $
+              ClientState {csServerAlive = False} -> return $
                 throwM (userError "Server connection died.")
-              s@ClientState {csMessageQueue} -> do
+              s@ClientState {csRequestQueue} -> do
                 writeTVar state s {
-                    csMessageQueue = csMessageQueue <> [(i, putMVar mvar)]
+                    csRequestQueue = csRequestQueue <> [(i, putMVar mvar)]
                   }
                 return (takeMVar mvar)
         )
@@ -377,51 +351,55 @@ connectServer addr tls = do
       for TSL or not depending on the configuration.
     -}
     prepareConnection
-      :: (MonadIO m, MonadIO f)
-      => Socket
-      -> f (BSL.ByteString -> IO (), ConduitT Void ByteString m ())
+      :: Socket
+      -> IO
+           ( BSL.ByteString -> IO ()
+           , ByteStream IO ()
+           )
     prepareConnection so =
         case tls of
-          Nothing -> pure (sendAll so, sourceSocket so)
+          Nothing ->
+            pure
+              ( sendAll so
+              , rereadNull
+                  (flip recv 4096)
+                  so
+              )
           Just params -> do
             ctx <- contextNew so params
             handshake ctx
-            pure (send ctx, reqSource ctx)
+            pure (send ctx, resSource ctx)
       where
         send :: Context -> BSL.ByteString -> IO ()
         send = sendData
 
-        reqSource :: (MonadIO m) => Context -> ConduitT Void ByteString m ()
-        reqSource ctx = do
-          bytes <- recvData ctx
-          if BS.null bytes
-            then pure ()
-            else do
-              yield bytes
-              reqSource ctx
+        resSource
+          :: Context
+          -> ByteStream IO ()
+        resSource = do
+          rereadNull recvData
 
-    {- | Receive requests and send them to the server. -}
-    requestThread :: (
-          Binary i,
-          MonadCatch m,
-          MonadLoggerIO m
-        )
-      => (BSL.ByteString -> IO ())
-      -> TVar (ClientState i o)
-      -> m ()
+    {- |
+      Receive requests from the client request function and send them
+      to the server.
+    -}
+    requestThread
+      :: (BSL.ByteString -> IO ())
+      -> TVar (ClientState request response)
+      -> LoggingT IO ()
     requestThread send state =
       join . liftIO . atomically $
         readTVar state >>= \case
-          ClientState {csAlive = False} -> pure (pure ())
-          ClientState {csMessageQueue = []} -> retry
+          ClientState {csServerAlive = False} -> pure (pure ())
+          ClientState {csRequestQueue = []} -> retry
           s@ClientState {
-                csMessageQueue = (m, r):remaining,
+                csRequestQueue = (m, r):remaining,
                 csResponders,
                 csMessageId
               }
             -> do
               writeTVar state s {
-                  csMessageQueue = remaining,
+                  csRequestQueue = remaining,
                   csResponders = Map.insert csMessageId r csResponders,
                   csMessageId = succ csMessageId
                 }
@@ -431,45 +409,62 @@ connectServer addr tls = do
 
     {- |
       Receive responses from the server and send then them back to the
-      client responder.
+      client request function.
     -}
-    responseThread :: (
-          Binary o,
-          MonadLoggerIO m,
-          MonadCatch m,
-          Show o
-        )
-      => ConduitT Void ByteString m ()
-      -> TVar (ClientState i o)
-      -> m ()
-    responseThread reqSource state = do
-      (try . runConduit) (
-          pure ()
-          .| reqSource
-          .| conduitDecode
-          .| CL.mapM_ (\r@Response {responseTo, response} ->
-              join . liftIO . atomically $
-                readTVar state >>= \ ClientState {csResponders} ->
-                  case Map.lookup responseTo csResponders of
-                    Nothing -> return $
-                      logWarn $ "Unexpected server response: " <> showt r
-                    Just respond -> return $ liftIO (respond response)
+    responseThread
+      :: ByteStream IO ()
+      -> TVar (ClientState request response)
+      -> LoggingT IO ()
+    responseThread resSource stateT = do
+        try
+            (
+              void $
+                S.mapM_
+                  handleResponse
+                  (hoist liftIO (decoded resSource))
             )
-        ) >>= \case
-          Left err ->
-            logError
-              $ "Socket receive error: "
-              <> showt (err :: SomeException)
-          Right () -> return ()
-      join . liftIO . atomically $
-        readTVar state >>= \s@ClientState {csResponders, csMessageQueue} -> do
-          writeTVar state s {csAlive = False}
-          return . liftIO . sequence_ $ [
-              r (throw (userError "Remote connection died."))
-              | r <-
-                  fmap snd (Map.toList csResponders)
-                  <> fmap snd csMessageQueue
-            ]
+          >>= \case
+            Left err -> do
+              logError
+                $ "Socket receive error: "
+                <> showt (err :: SomeException)
+              throw err
+            Right () ->
+              pure ()
+        closeClientState
+      where
+        closeClientState =
+          join . liftIO . atomically $ do
+            state <- readTVar stateT
+            writeTVar stateT state
+              { csServerAlive = False
+              , csResponders = mempty
+              , csRequestQueue = mempty
+              }
+
+            pure . traverse_ liftIO $
+              [ respond (throw (userError "Remote connection died."))
+              | respond <-
+                  Map.elems (csResponders state)
+                  <>  fmap snd (csRequestQueue state)
+              ]
+
+        handleResponse :: Response response -> LoggingT IO ()
+        handleResponse
+            responsePackage@Response
+              { responseTo
+              , response
+              }
+          = do
+              join . lift . atomically $ do
+                state <- readTVar stateT
+                case deleteFind responseTo (csResponders state) of
+                  Nothing ->
+                    pure . logWarn $
+                      "Unexpected server response: " <> showt responsePackage
+                  Just (respond, newResponders) -> do
+                    writeTVar stateT state {csResponders = newResponders}
+                    pure . lift $ respond response
 
 
 {- | A server endpoint configuration. -}
@@ -481,9 +476,9 @@ data Endpoint = Endpoint {
 
 
 {- | Response to a request. -}
-data Response p = Response {
-    responseTo :: MessageId,
-      response :: p
+data Response p = Response
+  { responseTo :: MessageId
+  ,   response :: p
   }
   deriving stock (Generic, Show)
 instance (Binary p) => Binary (Response p)
@@ -520,18 +515,18 @@ instance Show AddressDescription where
 
 
 {- | Client connection state. -}
-data ClientState i o = ClientState {
-    csAlive :: Bool,
-    csResponders :: Map MessageId (o -> IO ()),
-    csMessageId :: MessageId,
-    csMessageQueue :: [(i, o -> IO ())]
+data ClientState i o = ClientState
+  {  csServerAlive :: Bool
+  ,   csResponders :: Map MessageId (o -> IO ())
+  ,    csMessageId :: MessageId
+  , csRequestQueue :: [(i, o -> IO ())]
   }
 
 
 {- | A Request message type. -}
-data Request p = Request {
-    messageId :: MessageId,
-      payload :: p
+data Request p = Request
+  { messageId :: MessageId
+  ,   payload :: p
   }
   deriving stock (Generic, Show)
 instance (Binary p) => Binary (Request p)
@@ -544,13 +539,6 @@ newtype MessageId = MessageId {
   deriving newtype (Binary, Num, Bounded, Eq, Ord, Show, Enum)
 
 
-{- | Construct a coundiut source by reading forever from a 'Chan'. -}
-chanToSource :: (MonadIO m) => Chan a -> ConduitT Void a m ()
-chanToSource chan = do
-  yield =<< liftIO (readChan chan)
-  chanToSource chan
-
-
 {- |
   Proof that a response function was called on the server. Mainly
   useful for including in a type signature somewhere in your server
@@ -558,5 +546,43 @@ chanToSource chan = do
   request in all cases.
 -}
 data Responded = Responded
+
+
+mvarToStream
+  :: (MonadIO m)
+  => MVar i
+  -> Stream (Of i) m never_returns
+mvarToStream mvar = do
+  liftIO (takeMVar mvar) >>= S.yield
+  mvarToStream mvar
+
+
+rereadNull
+  :: (Monad m)
+  => (c -> m ByteString)
+  -> c
+  -> ByteStream m ()
+rereadNull f =
+  reread
+    (\c -> do
+      bytes <- f c
+      pure $ if BS.null bytes then Nothing else Just bytes
+    )
+
+
+{-|
+  If the key exists in the map, delete it and return its value along
+  with the new map.
+-}
+deleteFind
+  :: (Ord k)
+  => k
+  -> Map k v
+  -> Maybe (v, Map k v)
+deleteFind key m =
+  case Map.lookup key m of
+    Nothing -> Nothing
+    Just v ->
+      Just (v, Map.delete key m)
 
 

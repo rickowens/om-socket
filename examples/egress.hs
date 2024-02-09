@@ -7,10 +7,12 @@
 
 module Main (main) where
 
-import Conduit ((.|), runConduit, yield)
 import Data.Binary (Binary)
+import Data.Function ((&))
 import GHC.Generics (Generic)
 import OM.Socket (openEgress)
+import Prelude (Applicative(pure), IO)
+import Streaming.Prelude (each)
 
 {- | The messages that arrive on the socket. -}
 data Msg
@@ -30,8 +32,7 @@ main =
 
 sendMessages :: IO ()
 sendMessages = do
-  runConduit $
-    mapM_ yield [A, B, B, A, A, A, B]
-    .| openEgress "localhost:9000"
+  each [A, B, B, A, A, A, B]
+  & openEgress "localhost:9000"
 
 

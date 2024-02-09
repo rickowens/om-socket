@@ -7,11 +7,14 @@
 
 module Main (main) where
 
-import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Binary (Binary)
+import Data.Function ((&))
 import GHC.Generics (Generic)
+import OM.Fork (runRace)
 import OM.Socket (openIngress)
+import Prelude (Applicative(pure), ($), IO, putStrLn)
+import qualified Streaming.Prelude as S
 
 {- | The messages that arrive on the socket. -}
 data Msg
@@ -31,12 +34,12 @@ main =
 
 serveForever :: IO ()
 serveForever =
-  runConduit $
+  runRace $
     openIngress "localhost:9000"
-    .| awaitForever (\msg ->
+    & S.mapM_ (\msg ->
          case msg of
            A -> liftIO $ putStrLn "Got A"
            B -> liftIO $ putStrLn "Got B"
        )
 
-  
+

@@ -40,30 +40,40 @@ binary messages over the network. It includes:
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main (main) where
+module Ingress (main) where
 
-import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.IO.Class (MonadIO(liftIO))
 import Data.Binary (Binary)
+import Data.Function ((&))
 import GHC.Generics (Generic)
+import OM.Fork (runRace)
 import OM.Socket (openIngress)
+import Prelude (($), IO, putStrLn)
+import qualified Streaming.Prelude as Stream
 
-{- | The messages that arrive on the socket. -}
+{- |
+  The messages that arrive on the socket.
+
+  This type would typically be shared by both the Ingress and Egress side,
+  or at least the binary encoding must be identical.
+-}
 data Msg
   = A
   | B
   deriving stock (Generic)
   deriving anyclass (Binary)
 
+
 main :: IO ()
 main =
-  runConduit $
+  runRace $
     openIngress "localhost:9000"
-    .| awaitForever (\msg ->
-         case msg of
-           A -> liftIO $ putStrLn "Got A"
-           B -> liftIO $ putStrLn "Got B"
-       )
+    & Stream.mapM_
+       (\msg ->
+           case msg of
+             A -> liftIO $ putStrLn "Got A"
+             B -> liftIO $ putStrLn "Got B"
+         )
 ```
 
   
@@ -75,25 +85,33 @@ main =
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main (main) where
+module Egress (main) where
 
-import Conduit ((.|), runConduit, yield)
 import Data.Binary (Binary)
+import Data.Function ((&))
 import GHC.Generics (Generic)
 import OM.Socket (openEgress)
+import Prelude (IO)
+import qualified Streaming.Prelude as Stream
 
-{- | The messages that arrive on the socket. -}
+{- |
+  The messages that arrive on the socket.
+
+  This type would typically be shared between the client and the server,
+  or at least the binary representation must be identical (as, for
+  example, if the client is not written in Haskell).
+-}
 data Msg
   = A
   | B
   deriving stock (Generic)
   deriving anyclass (Binary)
 
+
 main :: IO ()
 main =
-  runConduit $
-    mapM_ yield [A, B, B, A, A, A, B]
-    .| openEgress "localhost:9000"
+  Stream.each [A, B, B, A, A, A, B]
+  & openEgress "localhost:9000"
 
 ```
 
@@ -105,39 +123,55 @@ main =
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main (main) where
 
-import Conduit ((.|), awaitForever, runConduit)
+module Server (main) where
+
 import Control.Monad.Logger (runStdoutLoggingT)
-import Control.Monad.Trans.Class (MonadTrans(lift))
 import Data.Binary (Binary)
+import Data.Function ((&))
+import OM.Fork (runRace)
 import OM.Socket (openServer)
+import Prelude (Maybe(Nothing), ($), IO, Show, String)
+import qualified Streaming.Prelude as Stream
 
-{- | The requests accepted by the server. -}
+
+{-|
+  The requests accepted by the server.
+
+  This type would typically be shared between client and server.
+-}
 newtype Request = EchoRequest String
   deriving newtype (Binary, Show)
 
 
-{- | The response sent back to the client. -}
+{-|
+  The response sent back to the client.
+
+  This type would typically be shared between client and server.
+-}
 newtype Responsee = EchoResponse String
   deriving newtype (Binary, Show)
 
 
-{- | Simple echo resposne server. -}
+{-| Simple echo resposne server. -}
 main :: IO ()
 main =
-  runStdoutLoggingT . runConduit $
-    pure ()
-    .| openServer "localhost:9000" Nothing
-    .| awaitForever (\(EchoRequest str, respond) ->
-        {-
-          You don't necessarily have to respond right away if you don't
-          want to. You can cache the responder away in some state and
-          get back to it at some later time if you like.
-        -}
-        lift $ respond (EchoResponse str)
+  runRace
+  $ runStdoutLoggingT
+  $ (
+      openServer "localhost:9000" Nothing
+      & Stream.mapM_
+          (\ (EchoRequest str, respond) ->
+            {-
+              You don't necessarily have to respond right away if
+              you don't want to. You can cache the responder away in
+              some state and get back to it at some later time if you
+              like. `openServer` and `connectServer` have a mechnamism
+              for handling out of order responses.
+            -}
+            respond (EchoResponse str)
+          )
     )
-
 ```
 
 ### Connect a client to a server
@@ -147,23 +181,32 @@ main =
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Main (main) where
+module Client (main) where
 
 import Control.Monad.Logger (runStdoutLoggingT)
 import Data.Binary (Binary)
 import OM.Socket (connectServer)
 
-{- | The requests accepted by the server. -}
+{-|
+  The requests accepted by the server.
+
+  This would typically need to be shared between the client and the
+  server. Certainly the binary encoding must be identical.
+-}
 newtype Request = EchoRequest String
   deriving newtype (Binary, Show)
 
 
-{- | The response sent back to the client. -}
+{-|
+  The response sent back to the client.
+
+  Likewise, this would be shared between client and server.
+-}
 newtype Responsee = EchoResponse String
   deriving newtype (Binary, Show)
 
 
-{- | Simple echo resposne client. -}
+{-| Simple echo resposne client. -}
 main :: IO ()
 main = do
   client <-

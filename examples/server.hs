@@ -6,11 +6,13 @@
 
 module Main (main) where
 
-import Conduit ((.|), awaitForever, runConduit)
 import Control.Monad.Logger (runStdoutLoggingT)
-import Control.Monad.Trans.Class (MonadTrans(lift))
 import Data.Binary (Binary)
+import Data.Function ((&))
+import OM.Fork (runRace)
 import OM.Socket (openServer)
+import Prelude (Maybe(Nothing), ($), IO, Show, String, pure)
+import qualified Streaming.Prelude as Stream
 
 {- | The requests accepted by the server. -}
 newtype Request = EchoRequest String
@@ -35,15 +37,21 @@ main = do
 
 server :: IO ()
 server =
-  runStdoutLoggingT . runConduit $
-    pure ()
-    .| openServer "localhost:9000" Nothing
-    .| awaitForever (\(EchoRequest str, respond) ->
-        {-
-          You don't necessarily have to respond right away if you don't
-          want to. You can cache the responder away in some state and
-          get back to it at some later time if you like.
-        -}
-        lift $ respond (EchoResponse str)
+  runRace
+  $ runStdoutLoggingT
+  $ (
+      openServer "localhost:9000" Nothing
+      & Stream.mapM_
+          (\ (EchoRequest str, respond) ->
+            {-
+              You don't necessarily have to respond right away if
+              you don't want to. You can cache the responder away in
+              some state and get back to it at some later time if you
+              like. `openServer` and `connectServer` have a mechnamism
+              for handling out of order responses.
+            -}
+            respond (EchoResponse str)
+          )
     )
+
 
