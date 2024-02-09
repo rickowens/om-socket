@@ -77,11 +77,15 @@ import qualified Data.Text as T
 import qualified Text.Megaparsec as M
 
 
-{- |
+{-|
   Opens an "ingress" socket, which is a socket that accepts a stream of
   messages without responding.
 -}
-openIngress :: (Binary i, MonadIO m, MonadFail m)
+openIngress
+  :: ( Binary i
+     , MonadFail m
+     , MonadIO m
+     )
   => AddressDescription
   -> ConduitT () i m ()
 openIngress bindAddr = do
@@ -90,7 +94,10 @@ openIngress bindAddr = do
     void . liftIO . forkIO $ acceptLoop so mvar
     mvarToSource mvar
   where
-    mvarToSource :: (MonadIO m) => MVar a -> ConduitT () a m ()
+    mvarToSource
+      :: (MonadIO m)
+      => MVar a
+      -> ConduitT () a m ()
     mvarToSource mvar = do
       liftIO (takeMVar mvar) >>= yield
       mvarToSource mvar
@@ -101,17 +108,19 @@ openIngress bindAddr = do
       void . forkIO $ feed (runGetIncremental get) conn mvar
       acceptLoop so mvar
 
-    feed :: (Binary i) => Decoder i -> Socket -> MVar i -> IO ()
-
+    feed
+      :: (Binary i)
+      => Decoder i
+      -> Socket
+      -> MVar i
+      -> IO ()
     feed (Done leftover _ i) conn mvar = do
       putMVar mvar i
       feed (runGetIncremental get `pushChunk` leftover) conn mvar
-
     feed (Partial k) conn mvar = do
       bytes <- recv conn 4096
       when (BS.null bytes) (fail "Socket closed by peer.")
       feed (k (Just bytes)) conn mvar
-
     feed (Fail _ _ err) _conn _chan =
       fail $ "Socket crashed. Decoding error: " ++ show err
 
