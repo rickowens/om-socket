@@ -78,8 +78,10 @@ import qualified Text.Megaparsec as M
 
 
 {-|
-  Opens an "ingress" socket, which is a socket that accepts a stream of
-  messages without responding.
+  Opens an "ingress" socket, which is a socket that accepts a stream
+  of messages without responding. In particular, we listen on a socket,
+  accepting new connections, an each connection concurrently reads its
+  elements off the socket and pushes them onto the stream.
 -}
 openIngress
   :: ( Binary i
