@@ -53,52 +53,19 @@ library
   hs-source-dirs: src
   default-language: Haskell2010
 
--- This isn't really a test, it is just used to make sure the example
--- compiles without clusttering up the package with a bunch of
--- executables.
-test-suite ingress-example
-  import: warnings, dependencies
-  main-is: ingress.hs
+test-suite test
+  import: dependencies, warnings
+  main-is: test.hs
   type: exitcode-stdio-1.0
-  hs-source-dirs: examples
+  other-modules:
+    Client
+    Egress
+    Ingress
+    Server
+  hs-source-dirs:
+    , test
+    , examples
   default-language: Haskell2010
   build-depends:
     , om-socket
-
--- This isn't really a test, it is just used to make sure the example
--- compiles without clusttering up the package with a bunch of
--- executables.
-test-suite egress-example
-  import: warnings, dependencies
-  main-is: egress.hs
-  type: exitcode-stdio-1.0
-  hs-source-dirs: examples
-  default-language: Haskell2010
-  build-depends:
-    , om-socket
-
--- This isn't really a test, it is just used to make sure the example
--- compiles without clusttering up the package with a bunch of
--- executables.
-test-suite server-example
-  import: warnings, dependencies
-  main-is: server.hs
-  type: exitcode-stdio-1.0
-  hs-source-dirs: examples
-  default-language: Haskell2010
-  build-depends:
-    , om-socket
-    , transformers >= 0.5.6.2 && < 0.7
-
--- This isn't really a test, it is just used to make sure the example
--- compiles without clusttering up the package with a bunch of
--- executables.
-test-suite client-example
-  import: warnings, dependencies
-  main-is: client.hs
-  type: exitcode-stdio-1.0
-  hs-source-dirs: examples
-  default-language: Haskell2010
-  build-depends:
-    , om-socket
-
+    , hspec >= 2.11.1 && < 2.12

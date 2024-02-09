@@ -2,41 +2,39 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
-module Main (main) where
+module Server (main) where
 
 import Control.Monad.Logger (runStdoutLoggingT)
 import Data.Binary (Binary)
 import Data.Function ((&))
 import OM.Fork (runRace)
 import OM.Socket (openServer)
-import Prelude (Maybe(Nothing), ($), IO, Show, String, pure)
+import Prelude (Maybe(Nothing), ($), IO, Show, String)
 import qualified Streaming.Prelude as Stream
 
-{- | The requests accepted by the server. -}
+
+{-|
+  The requests accepted by the server.
+
+  This type would typically be shared between client and server.
+-}
 newtype Request = EchoRequest String
   deriving newtype (Binary, Show)
 
 
-{- | The response sent back to the client. -}
+{-|
+  The response sent back to the client.
+
+  This type would typically be shared between client and server.
+-}
 newtype Responsee = EchoResponse String
   deriving newtype (Binary, Show)
 
 
-{- | Simple echo resposne server. -}
+{-| Simple echo resposne server. -}
 main :: IO ()
-main = do
-  {-
-    Don't actually call server, because the "test" we are using to make
-    sure this compiles will never finish running!
-  -}
-  -- server
-  pure ()
-
-
-server :: IO ()
-server =
+main =
   runRace
   $ runStdoutLoggingT
   $ (
