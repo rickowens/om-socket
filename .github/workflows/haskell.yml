@@ -29,7 +29,7 @@ jobs:
       - name: Configure the Build
         run: |
           rm cabal.project.freeze
-          cabal configure --enable-tests
+          cabal configure --enable-tests --disable-optimization
           cabal build --dry-run
 
       # Restore cache
@@ -112,7 +112,7 @@ jobs:
           EOF
           ) > cabal.project
           rm cabal.project.freeze
-          cabal configure --enable-tests
+          cabal configure --enable-tests --disable-optimization
           cabal build --dry-run
 
       # Restore cache
